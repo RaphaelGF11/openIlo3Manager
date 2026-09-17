@@ -2,11 +2,17 @@ package net.raphaelgf11.ilo3manager.webgateway
 
 import fi.iki.elonen.NanoHTTPD
 import net.raphaelgf11.ilo3manager.data.SshHost
+import java.security.KeyStore
+import javax.net.ssl.KeyManagerFactory
 
 /**
- * A loopback-only local HTTP server that transparently proxies each request to the iLO's HTTPS
- * web UI over [LegacyTlsHttpClient], so that Android's WebView (or any modern browser, which
- * refuses iLO3's TLS 1.0/1.1 + legacy ciphers directly) can render it via plain local HTTP.
+ * A local HTTP server that transparently proxies each request to the iLO's HTTPS web UI over
+ * [LegacyTlsHttpClient], so that Android's WebView (or any modern browser, which refuses
+ * iLO3's TLS 1.0/1.1 + legacy ciphers directly) can render it via plain local HTTP.
+ *
+ * Binds to `127.0.0.1` only by default; when [exposeAllInterfaces] is set, it binds to every
+ * interface (IPv4 and IPv6) instead, so another device on the same network can reach it. This
+ * removes the "never leaves the device" guarantee, so the UI must make that trade-off explicit.
  *
  * A fresh legacy-TLS connection is opened per request and closed immediately after (`Connection:
  * close`) — simple and robust for the low, interactive traffic of a config UI, at the cost of a
@@ -15,7 +21,15 @@ import net.raphaelgf11.ilo3manager.data.SshHost
 class IloHttpProxyServer(
     private val host: SshHost,
     port: Int,
-) : NanoHTTPD("127.0.0.1", port) {
+    exposeAllInterfaces: Boolean = false,
+) : NanoHTTPD(if (exposeAllInterfaces) null else "127.0.0.1", port) {
+
+    /** Switches this (not-yet-started) server to HTTPS using a locally generated, self-signed certificate. */
+    fun enableHttps(keyStore: KeyStore, keyPassword: CharArray) {
+        val keyManagerFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())
+        keyManagerFactory.init(keyStore, keyPassword)
+        makeSecure(makeSSLSocketFactory(keyStore, keyManagerFactory.keyManagers), null)
+    }
 
     override fun serve(session: IHTTPSession): Response {
         return try {
