@@ -1,0 +1,114 @@
+package net.raphaelgf11.ilo3manager.ui
+
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import net.raphaelgf11.ilo3manager.data.HostRepository
+import net.raphaelgf11.ilo3manager.data.NotificationSettingsRepository
+import net.raphaelgf11.ilo3manager.data.SettingsRepository
+import net.raphaelgf11.ilo3manager.ui.host.AddEditHostScreen
+import net.raphaelgf11.ilo3manager.ui.host.HostListScreen
+import net.raphaelgf11.ilo3manager.ui.host.HostListViewModel
+import net.raphaelgf11.ilo3manager.ui.hostdetail.HostDetailScreen
+import net.raphaelgf11.ilo3manager.ui.settings.SettingsScreen
+
+private const val ROUTE_HOST_LIST = "hosts"
+private const val ROUTE_ADD_HOST = "hosts/add"
+private const val ROUTE_EDIT_HOST = "hosts/{hostId}/edit"
+private const val ROUTE_HOST_DETAIL = "hosts/{hostId}"
+private const val ROUTE_SETTINGS = "settings"
+
+@Composable
+fun AppNavGraph(
+    repository: HostRepository,
+    settingsRepository: SettingsRepository,
+    notificationSettingsRepository: NotificationSettingsRepository,
+) {
+    val navController = rememberNavController()
+
+    NavHost(
+        navController = navController,
+        startDestination = ROUTE_HOST_LIST,
+        enterTransition = { slideInHorizontally(initialOffsetX = { fullWidth -> fullWidth }) },
+        exitTransition = { ExitTransition.None },
+        popEnterTransition = { EnterTransition.None },
+        popExitTransition = { slideOutHorizontally(targetOffsetX = { fullWidth -> fullWidth }) },
+    ) {
+        composable(ROUTE_HOST_LIST) {
+            val viewModel: HostListViewModel = viewModel(
+                factory = viewModelFactory { initializer { HostListViewModel(repository) } },
+            )
+            val lifecycleOwner = LocalLifecycleOwner.current
+            DisposableEffect(lifecycleOwner) {
+                val observer = LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_RESUME) viewModel.refresh()
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+            }
+            HostListScreen(
+                viewModel = viewModel,
+                notificationSettingsRepository = notificationSettingsRepository,
+                onAddHost = { navController.navigate(ROUTE_ADD_HOST) },
+                onOpenHost = { host -> navController.navigate("hosts/${host.id}") },
+                onEditHost = { host -> navController.navigate("hosts/${host.id}/edit") },
+                onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
+            )
+        }
+        composable(ROUTE_SETTINGS) {
+            SettingsScreen(
+                repository = settingsRepository,
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(ROUTE_ADD_HOST) {
+            AddEditHostScreen(
+                repository = repository,
+                existingHost = null,
+                onDone = { navController.popBackStack() },
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(
+            ROUTE_EDIT_HOST,
+            arguments = listOf(navArgument("hostId") { type = NavType.StringType }),
+        ) { entry ->
+            val hostId = entry.arguments?.getString("hostId")
+            val host = repository.getHosts().firstOrNull { it.id == hostId }
+            AddEditHostScreen(
+                repository = repository,
+                existingHost = host,
+                onDone = { navController.popBackStack() },
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(
+            ROUTE_HOST_DETAIL,
+            arguments = listOf(navArgument("hostId") { type = NavType.StringType }),
+        ) { entry ->
+            val hostId = entry.arguments?.getString("hostId")
+            val host = repository.getHosts().firstOrNull { it.id == hostId }
+            if (host != null) {
+                HostDetailScreen(
+                    host = host,
+                    settingsRepository = settingsRepository,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+        }
+    }
+}
