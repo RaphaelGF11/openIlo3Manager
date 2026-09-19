@@ -31,6 +31,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.raphaelgf11.ilo3manager.data.SshHost
+import net.raphaelgf11.ilo3manager.data.WebGatewaySettings
+import net.raphaelgf11.ilo3manager.data.WebGatewaySettingsRepository
 import net.raphaelgf11.ilo3manager.webgateway.WebGatewayManager
 import java.net.Inet4Address
 import java.net.NetworkInterface
@@ -51,10 +53,25 @@ fun WebGatewayTab(host: SshHost) {
     var port by remember(host.id) { mutableStateOf(WebGatewayManager.portFor(host.id)) }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
-    var exposeAllInterfaces by remember { mutableStateOf(false) }
-    var useHttps by remember { mutableStateOf(false) }
-    var forcedPortText by remember { mutableStateOf("") }
+    val settingsRepository = remember(context) { WebGatewaySettingsRepository(context) }
+    val savedSettings = remember(host.id) { settingsRepository.settingsFor(host.id) }
+    var exposeAllInterfaces by remember(host.id) { mutableStateOf(savedSettings.exposeAllInterfaces) }
+    var useHttps by remember(host.id) { mutableStateOf(savedSettings.useHttps) }
+    var forcedPortText by remember(host.id) { mutableStateOf(savedSettings.forcedPort?.toString() ?: "") }
     var runningWithHttps by remember { mutableStateOf(false) }
+
+    // Persist as soon as an option changes, so it survives leaving the tab or restarting the app
+    // even if the gateway is never started.
+    fun persist() {
+        settingsRepository.save(
+            host.id,
+            WebGatewaySettings(
+                exposeAllInterfaces = exposeAllInterfaces,
+                useHttps = useHttps,
+                forcedPort = forcedPortText.toIntOrNull(),
+            ),
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -98,7 +115,7 @@ fun WebGatewayTab(host: SshHost) {
             }
             Switch(
                 checked = exposeAllInterfaces,
-                onCheckedChange = { exposeAllInterfaces = it },
+                onCheckedChange = { exposeAllInterfaces = it; persist() },
                 enabled = !isRunning,
             )
         }
@@ -111,14 +128,14 @@ fun WebGatewayTab(host: SshHost) {
             Text("HTTPS local (certificat auto-signé)", modifier = Modifier.weight(1f))
             Switch(
                 checked = useHttps,
-                onCheckedChange = { useHttps = it },
+                onCheckedChange = { useHttps = it; persist() },
                 enabled = !isRunning,
             )
         }
 
         OutlinedTextField(
             value = forcedPortText,
-            onValueChange = { forcedPortText = it.filter { c -> c.isDigit() } },
+            onValueChange = { forcedPortText = it.filter { c -> c.isDigit() }; persist() },
             label = { Text("Forcer un port (optionnel, sinon aléatoire)") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             enabled = !isRunning,

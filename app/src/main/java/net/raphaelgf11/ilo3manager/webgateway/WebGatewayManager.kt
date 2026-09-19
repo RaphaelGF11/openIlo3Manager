@@ -11,6 +11,9 @@ import java.util.concurrent.ConcurrentHashMap
 
 private const val PRIVILEGED_PORT_THRESHOLD = 1024
 
+/** Offset added to a forced privileged port to get a deterministic, always-unprivileged bind port. */
+private const val PRIVILEGED_REDIRECT_BASE_PORT = 20_000
+
 /**
  * Owns one local loopback proxy server per host, started on demand and kept alive for as long as
  * the app process runs (or until explicitly stopped by the user). Mirrors
@@ -26,11 +29,15 @@ private const val PRIVILEGED_PORT_THRESHOLD = 1024
 object WebGatewayManager {
 
     private val servers = ConcurrentHashMap<String, IloHttpProxyServer>()
+    private val publicPorts = ConcurrentHashMap<String, Int>()
+
+    /** publicPort -> (actualPort, exposeAllInterfaces), for tearing down the iptables redirect on stop. */
+    private val redirects = ConcurrentHashMap<String, Triple<Int, Int, Boolean>>()
 
     private val _runningHostIds = MutableStateFlow<Set<String>>(emptySet())
     val runningHostIds: StateFlow<Set<String>> = _runningHostIds
 
-    /** Starts (if needed) the local proxy for [host] and returns the port it's listening on. */
+    /** Starts (if needed) the local proxy for [host] and returns the port it's reachable on. */
     @Synchronized
     fun ensureStarted(
         context: Context,
@@ -39,40 +46,62 @@ object WebGatewayManager {
         forcedPort: Int? = null,
         useHttps: Boolean = false,
     ): Int {
-        servers[host.id]?.let { if (it.isAlive) return it.listeningPort }
+        servers[host.id]?.let { if (it.isAlive) return publicPorts[host.id] ?: it.listeningPort }
 
-        if (forcedPort != null && forcedPort < PRIVILEGED_PORT_THRESHOLD && !RootDetector.isProbablyRooted()) {
+        val needsPrivilegedRedirect = forcedPort != null && forcedPort < PRIVILEGED_PORT_THRESHOLD
+        if (needsPrivilegedRedirect && !RootDetector.isProbablyRooted()) {
             throw IOException(
                 "Le port $forcedPort est privilégié (< $PRIVILEGED_PORT_THRESHOLD) : appareil rooté requis, et aucun root n'a été détecté.",
             )
         }
 
-        val server = IloHttpProxyServer(host, port = forcedPort ?: 0, exposeAllInterfaces = exposeAllInterfaces)
+        // A normal app process can't bind a privileged port even when the device is rooted (no
+        // CAP_NET_BIND_SERVICE). So on a rooted device we instead bind an ordinary port and have
+        // root install an iptables redirect from the requested privileged port to it. The bind
+        // port is derived deterministically (not OS-assigned) so a leftover rule from a run that
+        // ended without calling stop() (crash, force-kill, reinstall) can always be found and
+        // removed by exact match before installing a fresh one — see [RootPortForwarder.redirect].
+        val bindPort = when {
+            needsPrivilegedRedirect -> PRIVILEGED_REDIRECT_BASE_PORT + forcedPort!!
+            else -> forcedPort ?: 0
+        }
+        val server = IloHttpProxyServer(host, port = bindPort, exposeAllInterfaces = exposeAllInterfaces)
         if (useHttps) {
             server.enableHttps(SelfSignedCertificate.loadOrCreate(context), SelfSignedCertificate.keyPassword())
         }
-        try {
-            server.start(NanoHTTPD.SOCKET_READ_TIMEOUT, true)
-        } catch (e: IOException) {
-            if (forcedPort != null && forcedPort < PRIVILEGED_PORT_THRESHOLD) {
+        server.start(NanoHTTPD.SOCKET_READ_TIMEOUT, true)
+
+        var publicPort = server.listeningPort
+        if (needsPrivilegedRedirect) {
+            val ok = RootPortForwarder.redirect(forcedPort!!, server.listeningPort, exposeAllInterfaces)
+            if (!ok) {
+                server.stop()
                 throw IOException(
-                    "Échec de liaison au port privilégié $forcedPort malgré un appareil détecté comme rooté : " +
-                        "cette application n'a pas la capacité réseau nécessaire (${e.message}).",
+                    "Échec de la redirection root du port privilégié $forcedPort vers ${server.listeningPort} " +
+                        "(la commande iptables via su a échoué).",
                 )
             }
-            throw e
+            publicPort = forcedPort
+            redirects[host.id] = Triple(forcedPort, server.listeningPort, exposeAllInterfaces)
         }
+
         servers[host.id] = server
+        publicPorts[host.id] = publicPort
         _runningHostIds.value = servers.keys.toSet()
         ContextCompat.startForegroundService(context, WebGatewayForegroundService.intent(context))
-        return server.listeningPort
+        return publicPort
     }
 
-    fun portFor(hostId: String): Int? = servers[hostId]?.takeIf { it.isAlive }?.listeningPort
+    fun portFor(hostId: String): Int? = servers[hostId]?.takeIf { it.isAlive }?.let { publicPorts[hostId] }
 
     @Synchronized
     fun stop(context: Context, hostId: String) {
         servers.remove(hostId)?.stop()
+        LegacyTlsConnectionPool.evictAll()
+        publicPorts.remove(hostId)
+        redirects.remove(hostId)?.let { (publicPort, actualPort, exposeAllInterfaces) ->
+            RootPortForwarder.removeRedirect(publicPort, actualPort, exposeAllInterfaces)
+        }
         _runningHostIds.value = servers.keys.toSet()
         if (servers.isEmpty()) {
             context.stopService(WebGatewayForegroundService.intent(context))

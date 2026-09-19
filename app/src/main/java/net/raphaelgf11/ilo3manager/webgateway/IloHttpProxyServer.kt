@@ -14,9 +14,10 @@ import javax.net.ssl.KeyManagerFactory
  * interface (IPv4 and IPv6) instead, so another device on the same network can reach it. This
  * removes the "never leaves the device" guarantee, so the UI must make that trade-off explicit.
  *
- * A fresh legacy-TLS connection is opened per request and closed immediately after (`Connection:
- * close`) — simple and robust for the low, interactive traffic of a config UI, at the cost of a
- * TLS handshake per page resource.
+ * Two things make this usable in practice, both driven by how slow the device is: upstream
+ * connections are pooled and reused via keep-alive (a handshake costs over a second, see
+ * [LegacyTlsConnectionPool]), and static assets are cached so they are only ever fetched once
+ * (see [StaticResourceCache]).
  */
 class IloHttpProxyServer(
     private val host: SshHost,
@@ -31,6 +32,8 @@ class IloHttpProxyServer(
         makeSecure(makeSSLSocketFactory(keyStore, keyManagerFactory.keyManagers), null)
     }
 
+    private val staticCache = StaticResourceCache()
+
     override fun serve(session: IHTTPSession): Response {
         return try {
             proxy(session)
@@ -44,51 +47,162 @@ class IloHttpProxyServer(
     }
 
     private fun proxy(session: IHTTPSession): Response {
-        LegacyTlsHttpClient.connect(host.hostname, host.httpsPort).use { connection ->
-            val out = connection.outputStream
-            val query = session.queryParameterString
-            val target = session.uri + if (query.isNullOrEmpty()) "" else "?$query"
+        val query = session.queryParameterString
 
-            out.write("${session.method.name} $target HTTP/1.1\r\n".toByteArray(Charsets.ISO_8859_1))
-
-            val headers = LinkedHashMap(session.headers)
-            headers["host"] = "${host.hostname}:${host.httpsPort}"
-            headers["connection"] = "close"
-            // Legacy servers often choke on modern encodings/keep-alive hints; keep it simple.
-            headers.remove("accept-encoding")
-            headers.forEach { (key, value) -> out.write("$key: $value\r\n".toByteArray(Charsets.ISO_8859_1)) }
-            out.write("\r\n".toByteArray(Charsets.ISO_8859_1))
-
-            val contentLength = headers["content-length"]?.toIntOrNull() ?: 0
-            if (contentLength > 0) {
-                val body = ByteArray(contentLength)
-                var offset = 0
-                val input = session.inputStream
-                while (offset < contentLength) {
-                    val read = input.read(body, offset, contentLength - offset)
-                    if (read == -1) break
-                    offset += read
-                }
-                out.write(body, 0, offset)
-            }
-            out.flush()
-
-            val parsed = RawHttpResponseReader.read(connection.inputStream)
-            val status = Response.Status.values().firstOrNull { it.requestStatus == parsed.statusCode }
-                ?: Response.Status.OK
-            val contentType = parsed.headers["content-type"] ?: "application/octet-stream"
-            val response = newFixedLengthResponse(
-                status,
-                contentType,
-                java.io.ByteArrayInputStream(parsed.body),
-                parsed.body.size.toLong(),
-            )
-            parsed.headers.forEach { (key, value) ->
-                if (key !in setOf("content-length", "transfer-encoding", "connection", "content-type")) {
-                    response.addHeader(key, value)
-                }
-            }
-            return response
+        val cacheKey = StaticResourceCache.keyFor(session.method.name, session.uri)
+        if (cacheKey != null) {
+            staticCache.get(cacheKey)?.let { return toNanoResponse(it, cacheable = true) }
         }
+
+        val contentLength = session.headers["content-length"]?.toIntOrNull() ?: 0
+        val body = ByteArray(contentLength)
+        var bodyLength = 0
+        if (contentLength > 0) {
+            val input = session.inputStream
+            while (bodyLength < contentLength) {
+                val read = input.read(body, bodyLength, contentLength - bodyLength)
+                if (read == -1) break
+                bodyLength += read
+            }
+        }
+
+        val requestBytes = buildRequest(session, query, body, bodyLength)
+
+        // A connection taken from the pool may have been closed by the server in the meantime;
+        // that failure is indistinguishable from a real one until the write/read fails, so retry
+        // once on a guaranteed-fresh connection. A freshly created connection failing is a real
+        // error and is not retried.
+        val pooled = LegacyTlsConnectionPool.acquire(host.hostname, host.httpsPort)
+        val parsed = try {
+            exchange(pooled.connection, requestBytes)
+        } catch (e: Exception) {
+            LegacyTlsConnectionPool.discard(pooled.connection)
+            if (!pooled.fromPool) throw e
+            val fresh = LegacyTlsConnectionPool.acquire(host.hostname, host.httpsPort)
+            try {
+                exchange(fresh.connection, requestBytes)
+            } catch (retry: Exception) {
+                LegacyTlsConnectionPool.discard(fresh.connection)
+                throw retry
+            }
+        }
+
+        if (cacheKey != null && parsed.statusCode == 200) {
+            staticCache.put(cacheKey, parsed)
+        }
+        return toNanoResponse(parsed, cacheable = cacheKey != null)
     }
+
+    /** Writes [requestBytes], reads the reply, and returns the connection to the pool if it stays usable. */
+    private fun exchange(connection: LegacyTlsConnection, requestBytes: ByteArray): RawHttpResponse {
+        connection.outputStream.write(requestBytes)
+        connection.outputStream.flush()
+
+        val parsed = RawHttpResponseReader.read(connection.inputStream)
+
+        // Only a response whose body length was explicit leaves the stream positioned exactly at
+        // the start of the next reply; an EOF-framed one consumed everything and says nothing
+        // about where the next response would begin, so that connection can't be reused.
+        val explicitlyFramed = parsed.headers.containsKey("content-length") ||
+            parsed.headers["transfer-encoding"]?.contains("chunked", ignoreCase = true) == true
+        val serverClosing = parsed.headers["connection"]?.contains("close", ignoreCase = true) == true
+        if (explicitlyFramed && !serverClosing) {
+            LegacyTlsConnectionPool.release(host.hostname, host.httpsPort, connection)
+        } else {
+            LegacyTlsConnectionPool.discard(connection)
+        }
+
+        return parsed
+    }
+
+    private fun buildRequest(
+        session: IHTTPSession,
+        query: String?,
+        body: ByteArray,
+        bodyLength: Int,
+    ): ByteArray {
+        val iloOrigin = "https://${host.hostname}${if (host.httpsPort == 443) "" else ":${host.httpsPort}"}"
+        val headers = LinkedHashMap(session.headers)
+        headers["host"] = "${host.hostname}:${host.httpsPort}"
+        // Keep-alive is what makes connection pooling possible; iLO3 honours it.
+        headers["connection"] = "keep-alive"
+        // Legacy servers often choke on modern encodings; keep it simple.
+        headers.remove("accept-encoding")
+        // These reflect our own gateway's address (the "browser"'s view of who it's talking
+        // to), not iLO's — iLO's REST API validates Origin/Referer against its own hostname
+        // for state-changing requests and otherwise rejects them (surfacing as a confusing
+        // "Malformed object" JSON-parse error rather than a clear CSRF/origin failure).
+        if (headers.containsKey("origin")) headers["origin"] = iloOrigin
+        headers["referer"]?.let { referer ->
+            headers["referer"] = referer.replaceFirst(Regex("^https?://[^/]+"), iloOrigin)
+        }
+        // NanoHTTPD's own connection-metadata pseudo-headers, not real client headers — never
+        // meant to be forwarded to the upstream server.
+        headers.remove("remote-addr")
+        headers.remove("http-client-ip")
+        val headerLines = StringBuilder()
+        headers.forEach { (key, value) ->
+            headerLines.append("${canonicalHeaderName(key)}: $value\r\n")
+        }
+
+        // iLO3's web server cannot parse a request body when the request line carries a query
+        // string — *any* query string, even a bare "?", makes it answer
+        // "Malformed object, expected '{' at start of object" (verified against the real unit
+        // for "?", "?null", "?_=123", "?x=1"). jQuery appends cache-busting parameters to the
+        // UI's AJAX calls, so every settings-changing POST hit this. Dropping the query is
+        // safe here: iLO's JSON API takes all of its arguments in the body, and by definition
+        // no POST that carries a body can be relying on query parameters, since the firmware
+        // cannot read the body in that case at all.
+        val target = session.uri + when {
+            query.isNullOrEmpty() -> ""
+            bodyLength > 0 -> ""
+            else -> "?$query"
+        }
+        val requestLine = "${session.method.name} $target HTTP/1.1"
+
+        // Sent as a single write: Bouncy Castle emits one TLS record per write() call, so
+        // assembling the whole request first keeps it in as few records as possible.
+        // NOTE: never log this buffer — it carries the user's iLO credentials on the login
+        // request and their session key on every authenticated one.
+        val request = java.io.ByteArrayOutputStream(requestLine.length + headerLines.length + bodyLength + 8)
+        request.write("$requestLine\r\n".toByteArray(Charsets.ISO_8859_1))
+        request.write(headerLines.toString().toByteArray(Charsets.ISO_8859_1))
+        request.write("\r\n".toByteArray(Charsets.ISO_8859_1))
+        if (bodyLength > 0) request.write(body, 0, bodyLength)
+        return request.toByteArray()
+    }
+
+    private fun toNanoResponse(parsed: RawHttpResponse, cacheable: Boolean = false): Response {
+        val status = Response.Status.values().firstOrNull { it.requestStatus == parsed.statusCode }
+            ?: Response.Status.OK
+        val contentType = parsed.headers["content-type"] ?: "application/octet-stream"
+        val response = newFixedLengthResponse(
+            status,
+            contentType,
+            java.io.ByteArrayInputStream(parsed.body),
+            parsed.body.size.toLong(),
+        )
+        parsed.headers.forEach { (key, value) ->
+            if (key !in SKIPPED_RESPONSE_HEADERS) {
+                response.addHeader(key, value)
+            }
+        }
+        // iLO sends an ETag and a Last-Modified but no Cache-Control, so browsers revalidate these
+        // assets on every page view — each revalidation costing a round trip to a device that
+        // serves at ~35 KB/s. Since the content only changes with a firmware update, tell the
+        // browser it can reuse them outright.
+        if (cacheable && parsed.statusCode == 200) {
+            response.addHeader("Cache-Control", "private, max-age=86400")
+        }
+        return response
+    }
+
+    private companion object {
+        /** Re-generated by NanoHTTPD for its own connection to the browser; forwarding iLO's would conflict. */
+        val SKIPPED_RESPONSE_HEADERS = setOf("content-length", "transfer-encoding", "connection", "content-type")
+    }
+
+    /** Title-Cases a lowercased header name the way a real browser would send it (e.g. "content-length" -> "Content-Length"). */
+    private fun canonicalHeaderName(name: String): String =
+        name.split('-').joinToString("-") { part -> part.replaceFirstChar { it.uppercaseChar() } }
 }
