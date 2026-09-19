@@ -50,4 +50,31 @@ class IloCliParserTest {
         val raw = "/system1/fan1\n  Properties\n    HealthState=Ok\n"
         assertEquals(emptyList<IloCliParser.DriveBay>(), IloCliParser.parseDriveBays(raw))
     }
+
+    // Property values below are those a real iLO3 returns for these targets.
+
+    @Test
+    fun labelOf_prefersDeviceIdOverGenericElementName() {
+        val fan = mapOf("DeviceID" to "Fan 1", "ElementName" to "System")
+        assertEquals("Fan 1", IloCliParser.labelOf("fan1", fan))
+    }
+
+    @Test
+    fun labelOf_appendsIndexWhenNameCannotDistinguishSiblings() {
+        val psu = mapOf("ElementName" to "Power Supply")
+        assertEquals("Power Supply 1", IloCliParser.labelOf("powersupply1", psu))
+        assertEquals("Power Supply 2", IloCliParser.labelOf("powersupply2", psu))
+    }
+
+    @Test
+    fun labelOf_usesLocationForMemoryModules() {
+        val dimm = mapOf("size" to "Not Installed", "location" to "PROC 1 DIMM 1G")
+        assertEquals("PROC 1 DIMM 1G", IloCliParser.labelOf("memory1", dimm))
+    }
+
+    @Test
+    fun labelOf_fallsBackToTargetNameWhenNoNameProperty() {
+        val cpu = mapOf("number_cores" to "6", "speed" to "2533MHz")
+        assertEquals("cpu1", IloCliParser.labelOf("cpu1", cpu))
+    }
 }

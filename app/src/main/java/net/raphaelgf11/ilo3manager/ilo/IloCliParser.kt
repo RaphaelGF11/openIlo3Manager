@@ -135,12 +135,24 @@ object IloCliParser {
         return targetName.trimEnd { it.isDigit() }
     }
 
+    /**
+     * A readable name for a component, most specific property first.
+     *
+     * "ElementName" is deliberately near the end: on this firmware it holds a generic type name
+     * ("System" for every fan, "Power Supply" for every PSU), so preferring it made all six fans
+     * display as "System" while their real identity sat in DeviceID. When the chosen name carries
+     * no digit it can't distinguish siblings either, so the target's own index is appended —
+     * turning two identical "Power Supply" entries into "Power Supply 1" and "Power Supply 2".
+     */
     fun labelOf(targetName: String, properties: Map<String, String>): String {
-        return properties["ElementName"]
-            ?: properties["DeviceID"]
-            ?: properties["name"]
+        val label = properties["DeviceID"]
             ?: properties["location"]
-            ?: targetName
+            ?: properties["name"]
+            ?: properties["ElementName"]
+            ?: return targetName
+        if (label.any { it.isDigit() }) return label
+        val index = targetName.takeLastWhile { it.isDigit() }
+        return if (index.isEmpty()) label else "$label $index"
     }
 
     fun overallHealth(levels: Collection<HealthLevel>): HealthLevel {
