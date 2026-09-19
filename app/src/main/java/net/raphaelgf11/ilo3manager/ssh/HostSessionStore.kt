@@ -28,6 +28,11 @@ object HostSessionStore {
     fun vspSessionFor(host: SshHost): VspSessionController =
         vspSessions.getOrPut(host.id) { VspSessionController(host) }
 
+    /** Pushes an edited host record into any live session, so changes apply without a restart. */
+    fun updateHost(host: SshHost) {
+        controlSessions[host.id]?.updateHost(host)
+    }
+
     private fun isActive(state: ConnectionState) =
         state == ConnectionState.CONNECTED || state == ConnectionState.CONNECTING
 

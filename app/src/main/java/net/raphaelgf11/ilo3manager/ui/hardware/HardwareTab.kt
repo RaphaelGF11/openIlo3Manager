@@ -13,6 +13,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
@@ -60,16 +65,23 @@ fun HardwareTab(controller: ControlSessionController) {
     val error by controller.errorMessage.collectAsStateWithLifecycle()
     var selectedSubTab by remember { mutableIntStateOf(0) }
 
+    // The detailed per-component scan is CLI-only, so this tab opens the SSH session itself: the
+    // power dashboard no longer does when the host runs over IPMI.
     LaunchedEffect(connectionState) {
         if (connectionState == ConnectionState.CONNECTED) {
             controller.loadHardwareIfNeeded()
+        } else {
+            controller.ensureSshConnected()
         }
     }
 
     when {
         connectionState != ConnectionState.CONNECTED -> {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Ouvrez l'onglet Alimentation pour vous connecter d'abord.")
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CircularProgressIndicator()
+                    Text("Connexion SSH en cours…")
+                }
             }
         }
         loading -> {
@@ -103,20 +115,37 @@ fun HardwareTab(controller: ControlSessionController) {
                 if (error != null) {
                     Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(8.dp))
                 }
-                Row(modifier = Modifier.padding(8.dp)) {
-                    Button(onClick = { controller.loadHardwareIfNeeded(force = true) }) {
-                        Text("Rafraîchir")
+                // The refresh action sits beside the tabs rather than on its own row: it saves a
+                // full row of vertical space on a phone, where this list is already cramped.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ScrollableTabRow(
+                        selectedTabIndex = selectedSubTab,
+                        modifier = Modifier.weight(1f),
+                        edgePadding = 0.dp,
+                        // Suppressed here and drawn below instead: a ScrollableTabRow only draws
+                        // its divider under its own content, so on a wide screen the line stopped
+                        // mid-way instead of spanning the tab bar.
+                        divider = {},
+                    ) {
+                        HardwareSubTab.entries.forEachIndexed { index, subTab ->
+                            Tab(
+                                selected = selectedSubTab == index,
+                                onClick = { selectedSubTab = index },
+                                text = { Text("${subTab.title} (${tabContents[subTab]?.size ?: 0})") },
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = { controller.loadHardwareIfNeeded(force = true) },
+                        enabled = !loading,
+                    ) {
+                        Icon(Icons.Filled.Refresh, contentDescription = "Rafraîchir")
                     }
                 }
-                ScrollableTabRow(selectedTabIndex = selectedSubTab) {
-                    HardwareSubTab.entries.forEachIndexed { index, subTab ->
-                        Tab(
-                            selected = selectedSubTab == index,
-                            onClick = { selectedSubTab = index },
-                            text = { Text("${subTab.title} (${tabContents[subTab]?.size ?: 0})") },
-                        )
-                    }
-                }
+                HorizontalDivider()
 
                 val components = tabContents[HardwareSubTab.entries[selectedSubTab]].orEmpty()
                 if (components.isEmpty()) {
@@ -164,7 +193,10 @@ private fun HardwareComponentCard(component: HardwareComponent) {
             if (component.hasHealthState) {
                 HealthLed(health = component.health)
             }
-            Column(modifier = Modifier.fillMaxWidth()) {
+            // weight(1f), not fillMaxWidth(): inside a Row the latter claims the *parent's* full
+            // width, ignoring the space already taken by the LED and the spacing, so the text
+            // overflowed past the right edge.
+            Column(modifier = Modifier.weight(1f)) {
                 Text(component.label, style = MaterialTheme.typography.bodyLarge)
                 val details = component.properties
                     .filterKeys { !it.equals("HealthState", ignoreCase = true) && !it.equals("ElementName", ignoreCase = true) }

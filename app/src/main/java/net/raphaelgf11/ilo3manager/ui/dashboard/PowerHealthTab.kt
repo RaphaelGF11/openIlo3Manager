@@ -35,7 +35,7 @@ import net.raphaelgf11.ilo3manager.ssh.ConnectionState
 @Composable
 fun PowerHealthTab(controller: ControlSessionController, settingsRepository: SettingsRepository) {
     val settings by settingsRepository.settings.collectAsStateWithLifecycle()
-    val connectionState by controller.connectionState.collectAsStateWithLifecycle()
+    val dashboardState by controller.dashboardState.collectAsStateWithLifecycle()
     val error by controller.errorMessage.collectAsStateWithLifecycle()
     val powerState by controller.powerState.collectAsStateWithLifecycle()
     val health by controller.overallHealth.collectAsStateWithLifecycle()
@@ -52,8 +52,8 @@ fun PowerHealthTab(controller: ControlSessionController, settingsRepository: Set
     // whenever the tab re-enters composition (e.g. switching back from another tab), so it
     // doesn't depend on a refresh-completion transition that may never come if nothing is
     // in flight when the tab reappears. Cancelled automatically when the user switches tabs.
-    LaunchedEffect(controller, connectionState, settings.autoRefreshSeconds) {
-        if (connectionState != ConnectionState.CONNECTED) return@LaunchedEffect
+    LaunchedEffect(controller, dashboardState, settings.autoRefreshSeconds) {
+        if (dashboardState != ConnectionState.CONNECTED) return@LaunchedEffect
         val delayMs = settings.autoRefreshSeconds * 1_000L
         controller.dashboardRefreshing.first { isRefreshing -> !isRefreshing }
         while (true) {
@@ -69,7 +69,7 @@ fun PowerHealthTab(controller: ControlSessionController, settingsRepository: Set
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
-        when (connectionState) {
+        when (dashboardState) {
             ConnectionState.CONNECTING -> Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),

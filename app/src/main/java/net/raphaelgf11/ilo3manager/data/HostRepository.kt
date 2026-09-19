@@ -63,6 +63,9 @@ class HostRepository(context: Context) {
         put("privateKey", host.privateKey)
         put("privateKeyPassphrase", host.privateKeyPassphrase)
         put("publicKey", host.publicKey)
+        put("ipmiEnabled", host.ipmiEnabled)
+        put("ipmiPort", host.ipmiPort)
+        put("ipmiPromptDismissed", host.ipmiPromptDismissed)
     }
 
     private fun fromJson(o: JSONObject) = SshHost(
@@ -77,6 +80,9 @@ class HostRepository(context: Context) {
         privateKey = o.optString("privateKey", ""),
         privateKeyPassphrase = o.optString("privateKeyPassphrase", ""),
         publicKey = o.optString("publicKey", ""),
+        ipmiEnabled = o.optBoolean("ipmiEnabled", false),
+        ipmiPort = o.optInt("ipmiPort", 623),
+        ipmiPromptDismissed = o.optBoolean("ipmiPromptDismissed", false),
     )
 
     companion object {

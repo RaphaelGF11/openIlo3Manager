@@ -19,4 +19,12 @@ data class SshHost(
     val privateKey: String = "",
     val privateKeyPassphrase: String = "",
     val publicKey: String = "",
+    /**
+     * IPMI/DCMI over LAN is far faster than the SSH CLI for power state/actions, but iLO3 does
+     * not enable it by default, so this is opt-in per host and never assumed available.
+     */
+    val ipmiEnabled: Boolean = false,
+    val ipmiPort: Int = 623,
+    /** Set once the user has declined the offer to enable IPMI, so it isn't proposed again. */
+    val ipmiPromptDismissed: Boolean = false,
 )

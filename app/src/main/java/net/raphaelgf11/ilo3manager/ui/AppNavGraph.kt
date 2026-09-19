@@ -104,8 +104,9 @@ fun AppNavGraph(
             val host = repository.getHosts().firstOrNull { it.id == hostId }
             if (host != null) {
                 HostDetailScreen(
-                    host = host,
+                    initialHost = host,
                     settingsRepository = settingsRepository,
+                    hostRepository = repository,
                     onBack = { navController.popBackStack() },
                 )
             }

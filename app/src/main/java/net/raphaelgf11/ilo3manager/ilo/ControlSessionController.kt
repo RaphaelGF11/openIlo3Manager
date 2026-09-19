@@ -9,14 +9,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import net.raphaelgf11.ilo3manager.data.SshHost
+import net.raphaelgf11.ilo3manager.ipmi.ChassisControl
+import net.raphaelgf11.ilo3manager.ipmi.ChassisPowerState
+import net.raphaelgf11.ilo3manager.ipmi.IpmiLanClient
 import net.raphaelgf11.ilo3manager.ssh.ConnectionState
 import net.raphaelgf11.ilo3manager.ssh.IloCliClient
 
-enum class PowerAction(val cliArgument: String) {
-    ON("on"),
-    OFF("off"),
-    FORCE_OFF("off hard"),
-    RESET("reset"),
+enum class PowerAction(val cliArgument: String, val ipmiControl: ChassisControl) {
+    ON("on", ChassisControl.POWER_UP),
+    OFF("off", ChassisControl.SOFT_SHUTDOWN),
+    FORCE_OFF("off hard", ChassisControl.POWER_DOWN),
+    RESET("reset", ChassisControl.HARD_RESET),
 }
 
 /**
@@ -42,13 +45,30 @@ private const val HARDWARE_SCAN_TIMEOUT_MS = 90_000L
  * host. Lives in [net.raphaelgf11.ilo3manager.ssh.HostSessionStore], independent of navigation,
  * so it survives leaving and returning to the host list.
  */
-class ControlSessionController(private val host: SshHost) {
+class ControlSessionController(private var host: SshHost) {
+
+    /**
+     * Applies an edited host record to this already-live session. Needed because the controller is
+     * cached per host id in [net.raphaelgf11.ilo3manager.ssh.HostSessionStore]: without this it
+     * would keep serving the SshHost captured when it was first created, so a setting changed
+     * during the session (enabling IPMI, say) would only take effect after an app restart.
+     */
+    fun updateHost(updated: SshHost) {
+        host = updated
+    }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val client = IloCliClient()
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState
+
+    /**
+     * Readiness of the power dashboard specifically. Tracked separately from [connectionState]
+     * because over IPMI the dashboard works with no SSH session at all.
+     */
+    private val _dashboardState = MutableStateFlow(ConnectionState.DISCONNECTED)
+    val dashboardState: StateFlow<ConnectionState> = _dashboardState
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage
@@ -80,7 +100,59 @@ class ControlSessionController(private val host: SshHost) {
     private val _consoleBusy = MutableStateFlow(false)
     val consoleBusy: StateFlow<Boolean> = _consoleBusy
 
+    /**
+     * Prepares the power dashboard. Over IPMI this deliberately does *not* open the SSH session:
+     * establishing it costs seconds against this BMC, which is the very latency IPMI is there to
+     * avoid — so SSH is left to the tabs that actually need the CLI (see [ensureSshConnected]).
+     */
     fun connectAndLoadDashboard() {
+        if (usesIpmi) {
+            loadDashboardOverIpmi()
+            return
+        }
+        if (_connectionState.value == ConnectionState.CONNECTED) {
+            _dashboardState.value = ConnectionState.CONNECTED
+            refreshDashboard()
+            return
+        }
+        if (_connectionState.value == ConnectionState.CONNECTING) return
+        _connectionState.value = ConnectionState.CONNECTING
+        _dashboardState.value = ConnectionState.CONNECTING
+        _errorMessage.value = null
+        scope.launch {
+            try {
+                client.connect(host)
+                _connectionState.value = ConnectionState.CONNECTED
+                _dashboardState.value = ConnectionState.CONNECTED
+                refreshDashboard()
+            } catch (e: Exception) {
+                _errorMessage.value = e.message ?: "Connexion impossible"
+                _connectionState.value = ConnectionState.ERROR
+                _dashboardState.value = ConnectionState.ERROR
+            }
+        }
+    }
+
+    private fun loadDashboardOverIpmi() {
+        if (_dashboardState.value == ConnectionState.CONNECTING) return
+        _dashboardState.value = ConnectionState.CONNECTING
+        _errorMessage.value = null
+        scope.launch {
+            try {
+                refreshDashboardOverIpmi()
+                _dashboardState.value = ConnectionState.CONNECTED
+            } catch (e: Exception) {
+                _errorMessage.value = e.message ?: "Connexion IPMI impossible"
+                _dashboardState.value = ConnectionState.ERROR
+            }
+        }
+    }
+
+    /**
+     * Opens the SSH control session if it isn't already up. Called by the tabs that need the iLO
+     * CLI (console, hardware scan); the power dashboard doesn't when it runs over IPMI.
+     */
+    fun ensureSshConnected() {
         if (_connectionState.value == ConnectionState.CONNECTING || _connectionState.value == ConnectionState.CONNECTED) return
         _connectionState.value = ConnectionState.CONNECTING
         _errorMessage.value = null
@@ -88,7 +160,6 @@ class ControlSessionController(private val host: SshHost) {
             try {
                 client.connect(host)
                 _connectionState.value = ConnectionState.CONNECTED
-                refreshDashboard()
             } catch (e: Exception) {
                 _errorMessage.value = e.message ?: "Connexion impossible"
                 _connectionState.value = ConnectionState.ERROR
@@ -96,14 +167,16 @@ class ControlSessionController(private val host: SshHost) {
         }
     }
 
+    /** True when this host is configured to drive the power dashboard over IPMI instead of SSH. */
+    val usesIpmi: Boolean
+        get() = host.ipmiEnabled && host.password.isNotBlank()
+
     fun refreshDashboard() {
         if (_dashboardRefreshing.value) return
         _dashboardRefreshing.value = true
         scope.launch {
             try {
-                _powerState.value = IloCliParser.parsePowerState(client.runCommand("power"))
-                val components = QUICK_SCAN_CATEGORIES.flatMap { category -> fetchCategory(category) }
-                _overallHealth.value = IloCliParser.overallHealth(components.map { it.health })
+                if (usesIpmi) refreshDashboardOverIpmi() else refreshDashboardOverSsh()
             } catch (e: Exception) {
                 _errorMessage.value = e.message ?: "Échec de rafraîchissement"
             } finally {
@@ -112,20 +185,67 @@ class ControlSessionController(private val host: SshHost) {
         }
     }
 
+    /**
+     * When IPMI is enabled the dashboard uses it exclusively — no SSH commands at all. A single
+     * Get Chassis Status returns both the power state and the chassis fault indicators, which
+     * replaces the multi-command SSH scan of fans and power supplies that dominated refresh time.
+     *
+     * Note this is a coarser health signal than the SSH scan: it reports chassis-level faults
+     * (cooling, power, drives) rather than the state of each individual component. The Matériel
+     * tab still does the detailed per-component scan over SSH.
+     */
+    private suspend fun refreshDashboardOverIpmi() {
+        val status = withIpmi { it.getChassisStatus() }
+        _powerState.value = when (status.power) {
+            ChassisPowerState.ON -> PowerState.ON
+            ChassisPowerState.OFF -> PowerState.OFF
+            ChassisPowerState.UNKNOWN -> PowerState.UNKNOWN
+        }
+        _overallHealth.value = if (status.hasFault) HealthLevel.DEGRADED else HealthLevel.OK
+    }
+
+    private suspend fun refreshDashboardOverSsh() {
+        _powerState.value = IloCliParser.parsePowerState(client.runCommand("power"))
+        val components = QUICK_SCAN_CATEGORIES.flatMap { category -> fetchCategory(category) }
+        _overallHealth.value = IloCliParser.overallHealth(components.map { it.health })
+    }
+
     fun performPowerAction(action: PowerAction) {
         if (_powerActionInProgress.value) return
         _powerActionInProgress.value = true
         scope.launch {
             try {
-                client.runCommand("power ${action.cliArgument}")
+                if (usesIpmi) {
+                    withIpmi { it.chassisControl(action.ipmiControl) }
+                } else {
+                    client.runCommand("power ${action.cliArgument}")
+                }
                 // The BMC needs a moment before it reports the new state accurately.
                 kotlinx.coroutines.delay(3_000)
-                _powerState.value = IloCliParser.parsePowerState(client.runCommand("power"))
+                if (usesIpmi) refreshDashboardOverIpmi() else {
+                    _powerState.value = IloCliParser.parsePowerState(client.runCommand("power"))
+                }
             } catch (e: Exception) {
                 _errorMessage.value = e.message ?: "Échec de la commande d'alimentation"
             } finally {
                 _powerActionInProgress.value = false
             }
+        }
+    }
+
+    /**
+     * Opens a fresh IPMI session per call (there is no long-lived state worth keeping) and runs
+     * [block]. Failures propagate rather than silently falling back to SSH: the host was
+     * explicitly configured for IPMI, so quietly reverting to the slow path would hide a broken
+     * configuration behind the very latency IPMI was enabled to avoid.
+     */
+    private fun <T> withIpmi(block: (IpmiLanClient) -> T): T {
+        val ipmi = IpmiLanClient(host.hostname, host.ipmiPort, host.username, host.password)
+        return try {
+            ipmi.open()
+            block(ipmi)
+        } finally {
+            ipmi.close()
         }
     }
 
@@ -283,6 +403,7 @@ class ControlSessionController(private val host: SshHost) {
     fun disconnect() {
         client.disconnect()
         _connectionState.value = ConnectionState.DISCONNECTED
+        _dashboardState.value = ConnectionState.DISCONNECTED
         hardwareLoaded = false
         _hardware.value = emptyList()
     }

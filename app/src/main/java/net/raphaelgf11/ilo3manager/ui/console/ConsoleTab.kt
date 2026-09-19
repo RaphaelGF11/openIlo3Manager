@@ -13,6 +13,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -45,9 +46,20 @@ fun ConsoleTab(controller: ControlSessionController) {
         scrollState.animateScrollTo(scrollState.maxValue)
     }
 
+    // The CLI genuinely needs SSH, so this tab opens the session itself: the power dashboard no
+    // longer does when the host runs over IPMI.
+    LaunchedEffect(controller) {
+        controller.ensureSshConnected()
+    }
+
     if (connectionState != ConnectionState.CONNECTED) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Ouvrez l'onglet Alimentation pour vous connecter d'abord.")
+            when (connectionState) {
+                ConnectionState.CONNECTING -> Text("Connexion SSH en cours…")
+                else -> Button(onClick = { controller.ensureSshConnected() }) {
+                    Text("Se connecter en SSH")
+                }
+            }
         }
         return
     }
