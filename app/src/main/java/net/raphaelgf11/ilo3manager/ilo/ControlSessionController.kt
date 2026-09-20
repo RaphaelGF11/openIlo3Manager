@@ -11,6 +11,7 @@ import kotlinx.coroutines.withTimeout
 import net.raphaelgf11.ilo3manager.data.SshHost
 import net.raphaelgf11.ilo3manager.ipmi.ChassisControl
 import net.raphaelgf11.ilo3manager.ipmi.ChassisPowerState
+import net.raphaelgf11.ilo3manager.ipmi.ChassisStatus
 import net.raphaelgf11.ilo3manager.ipmi.IpmiLanClient
 import net.raphaelgf11.ilo3manager.ipmi.IpmiSensorReader
 import net.raphaelgf11.ilo3manager.ipmi.SdrEntry
@@ -227,19 +228,51 @@ class ControlSessionController(private var host: SshHost) {
      * tab still does the detailed per-component scan over SSH.
      */
     private suspend fun refreshDashboardOverIpmi() {
-        val status = withIpmi { it.getChassisStatus() }
-        _powerState.value = when (status.power) {
-            ChassisPowerState.ON -> PowerState.ON
-            ChassisPowerState.OFF -> PowerState.OFF
-            ChassisPowerState.UNKNOWN -> PowerState.UNKNOWN
+        withIpmi { ipmi ->
+            val status = ipmi.getChassisStatus()
+            // Published before the sensor pass, so the power state and the locator appear at once
+            // rather than waiting on a reading that only refines the health level.
+            _powerState.value = when (status.power) {
+                ChassisPowerState.ON -> PowerState.ON
+                ChassisPowerState.OFF -> PowerState.OFF
+                ChassisPowerState.UNKNOWN -> PowerState.UNKNOWN
+            }
+            _identifyOn.value = status.identifyOn
+
+            _overallHealth.value = overallHealthOverIpmi(ipmi, status)
+            _indicator.value = HostIndicator.from(_powerState.value, _overallHealth.value)
         }
-        _overallHealth.value = when {
-            status.hasCriticalFault -> HealthLevel.CRITICAL
-            status.hasFault -> HealthLevel.DEGRADED
+    }
+
+    /**
+     * Get Chassis Status alone is not a health signal.
+     *
+     * Its fault bits cover chassis-level conditions — cooling, main power, drives — and say nothing
+     * about a failed power supply or a hot processor, so a genuinely degraded machine reports as
+     * normal. The sensors have to be read as well. The repository is cached, so only the first
+     * refresh pays for reading it.
+     */
+    private fun overallHealthOverIpmi(ipmi: IpmiLanClient, status: ChassisStatus): HealthLevel {
+        val sensors = runCatching {
+            val reader = IpmiSensorReader(ipmi)
+            val entries = cachedSdr ?: reader.readRepository().also { cachedSdr = it }
+            entries.mapNotNull { reader.readSensor(it) }
+        }.getOrElse { emptyList() }
+
+        val worst = sensors.fold(HealthLevel.OK) { worst, sensor ->
+            val level = when (sensor.health) {
+                SensorHealth.CRITICAL -> HealthLevel.CRITICAL
+                SensorHealth.DEGRADED -> HealthLevel.DEGRADED
+                SensorHealth.OK, SensorHealth.UNAVAILABLE -> HealthLevel.OK
+            }
+            if (level.ordinal > worst.ordinal) level else worst
+        }
+
+        return when {
+            status.hasCriticalFault || worst == HealthLevel.CRITICAL -> HealthLevel.CRITICAL
+            status.hasFault || worst == HealthLevel.DEGRADED -> HealthLevel.DEGRADED
             else -> HealthLevel.OK
         }
-        _identifyOn.value = status.identifyOn
-        _indicator.value = HostIndicator.from(status)
     }
 
     private suspend fun refreshDashboardOverSsh() {

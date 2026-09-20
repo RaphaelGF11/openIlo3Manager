@@ -204,6 +204,9 @@ class IpmiSensorReader(private val client: IpmiLanClient) {
             // where a plain reading distinguishes a working unit from a failed one.
             entry.eventReadingType == 0x6F && entry.sensorType == SENSOR_TYPE_POWER_SUPPLY ->
                 powerSupplyHealth(comparison)
+            // Generic redundancy sensors (IPMI table 42-2) are well enough defined to decode, and
+            // they carry exactly the "still running, but no longer protected" signal.
+            entry.eventReadingType == EVENT_TYPE_REDUNDANCY -> redundancyHealth(comparison)
             // Any other discrete sensor reports asserted state bits whose meaning depends on the
             // sensor type, and several of them assert bit 0 simply to say "present". Reading those
             // as threshold comparisons is what marked healthy fans and power supplies as failing.
@@ -237,12 +240,23 @@ class IpmiSensorReader(private val client: IpmiLanClient) {
     /**
      * Power supply state bits (IPMI table 42-3). Bit 0 is presence and says nothing about health,
      * which is exactly the trap: a seated, working supply asserts it.
+     *
+     * A failed supply is degraded rather than critical. These machines are built with redundant
+     * supplies: one failing costs the redundancy, not the server, and the chassis says so itself by
+     * lighting its health LED amber rather than red.
      */
     private fun powerSupplyHealth(states: Int): SensorHealth = when {
-        states and 0x02 != 0 -> SensorHealth.CRITICAL // failure detected
-        states and 0x08 != 0 -> SensorHealth.CRITICAL // AC lost
+        states and 0x02 != 0 -> SensorHealth.DEGRADED // failure detected
+        states and 0x08 != 0 -> SensorHealth.DEGRADED // input lost
         states and 0x04 != 0 -> SensorHealth.DEGRADED // predictive failure
         states and 0x40 != 0 -> SensorHealth.DEGRADED // configuration error
+        else -> SensorHealth.OK
+    }
+
+    /** Redundancy state bits (IPMI table 42-2): bit 0 is full redundancy, the rest are losses. */
+    private fun redundancyHealth(states: Int): SensorHealth = when {
+        states and 0x01 != 0 -> SensorHealth.OK // fully redundant
+        states and 0x06 != 0 -> SensorHealth.DEGRADED // redundancy lost or degraded
         else -> SensorHealth.OK
     }
 
@@ -272,6 +286,7 @@ class IpmiSensorReader(private val client: IpmiLanClient) {
         const val CMD_GET_SENSOR_READING = 0x2D
         const val END_OF_SDR = 0xFFFF
         const val SENSOR_TYPE_POWER_SUPPLY = 0x08
+        const val EVENT_TYPE_REDUNDANCY = 0x0B
         /** Small enough that a record chunk plus its two-byte prefix always fits in one reply. */
         const val CHUNK_SIZE = 16
     }
