@@ -19,6 +19,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -65,19 +66,26 @@ class FrontPanelConfigActivity : ComponentActivity() {
 
         setContent {
             Ilo3managerTheme {
-                ConfigScreen(
-                    hosts = hosts,
-                    onConfirm = { host ->
-                        prefs.setHostId(widgetId, host.id)
-                        FrontPanelWidget.requestRefresh(applicationContext, widgetId)
-                        setResult(
-                            Activity.RESULT_OK,
-                            Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId),
-                        )
-                        finish()
-                    },
-                    confirmEnabled = widgetId != AppWidgetManager.INVALID_APPWIDGET_ID,
-                )
+                // Without a Surface the activity's own window background shows through, and a
+                // screen that is read at night should not be the one white rectangle in the app.
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
+                ) {
+                    ConfigScreen(
+                        hosts = hosts,
+                        onConfirm = { host ->
+                            prefs.setHostId(widgetId, host.id)
+                            FrontPanelWidget.requestRefresh(applicationContext, widgetId)
+                            setResult(
+                                Activity.RESULT_OK,
+                                Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId),
+                            )
+                            finish()
+                        },
+                        confirmEnabled = widgetId != AppWidgetManager.INVALID_APPWIDGET_ID,
+                    )
+                }
             }
         }
     }

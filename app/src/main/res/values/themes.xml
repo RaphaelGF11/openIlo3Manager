@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
+    <!--
+      Only the window background and system bars come from here; the screens themselves are themed
+      by Compose. It still has to follow dark mode, or every surface Compose does not paint over
+      shows up as a white flash — see values-night.
+    -->
     <style name="Theme.Ilo3manager" parent="android:Theme.Material.Light.NoActionBar" />
 </resources>
