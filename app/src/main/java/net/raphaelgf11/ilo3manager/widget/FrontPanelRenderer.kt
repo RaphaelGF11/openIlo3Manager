@@ -377,23 +377,29 @@ object FrontPanelRenderer {
         }
         // An impeller, not a clover: each blade is a teardrop, broad at the rim and tapering into
         // the hub, and offset in the direction of rotation. Four symmetric lobes read as a flower.
-        val hubR = 2.9f
-        val tipOffset = 9.4f
-        val tipR = 5.7f
-        val sweep = 15f
+        val hubR = 3.2f
+        val tipR = 11.6f
         for (i in 0 until 4) {
-            val base = i * 90f + 45f
-            val tipX = polarX(cx, tipOffset, base + sweep)
-            val tipY = polarY(cy, tipOffset, base + sweep)
-            canvas.drawCircle(tipX, tipY, tipR, blade)
-            // A narrow neck: widen it and the four gaps close up, turning the impeller into a blob.
-            val neck = Path().apply {
-                moveTo(polarX(cx, hubR, base - 14f), polarY(cy, hubR, base - 14f))
-                lineTo(tipX, tipY)
-                lineTo(polarX(cx, hubR, base + 26f), polarY(cy, hubR, base + 26f))
+            val a = i * 90f + 45f
+            // Leading edge bows outwards, the tip is broad, the trailing edge sweeps back into the
+            // hub. A disc on a stalk has none of that, which is why it reads as a dot.
+            val path = Path().apply {
+                moveTo(polarX(cx, hubR, a - 22f), polarY(cy, hubR, a - 22f))
+                quadTo(
+                    polarX(cx, tipR * 0.72f, a - 40f), polarY(cy, tipR * 0.72f, a - 40f),
+                    polarX(cx, tipR, a - 2f), polarY(cy, tipR, a - 2f),
+                )
+                quadTo(
+                    polarX(cx, tipR * 1.04f, a + 28f), polarY(cy, tipR * 1.04f, a + 28f),
+                    polarX(cx, tipR * 0.80f, a + 50f), polarY(cy, tipR * 0.80f, a + 50f),
+                )
+                quadTo(
+                    polarX(cx, tipR * 0.34f, a + 42f), polarY(cy, tipR * 0.34f, a + 42f),
+                    polarX(cx, hubR, a + 22f), polarY(cy, hubR, a + 22f),
+                )
                 close()
             }
-            canvas.drawPath(neck, blade)
+            canvas.drawPath(path, blade)
         }
         canvas.drawCircle(cx, cy, hubR, blade)
     }
