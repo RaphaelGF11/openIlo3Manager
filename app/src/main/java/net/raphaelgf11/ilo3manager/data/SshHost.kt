@@ -20,6 +20,17 @@ data class SshHost(
      * a slot in the very small pool an iLO3 allows.
      */
     val alwaysOpenVsp: Boolean = false,
+    /** Tab shown when the host is opened. */
+    val defaultTab: HostTab = HostTab.POWER,
+    /**
+     * Expose only the web gateway, and ask for no credentials.
+     *
+     * Solves the bootstrapping case: reaching an iLO whose web interface no modern browser can
+     * open, precisely in order to create the dedicated account or upload the key that the other
+     * tabs would need. Authentication then happens in the browser, against the iLO's own login
+     * page, so the app stores nothing.
+     */
+    val webGatewayOnly: Boolean = false,
     val username: String,
     val authMethod: AuthMethod,
     val password: String = "",

@@ -319,7 +319,10 @@ private fun HostRow(
                     androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(start = 6.dp))
                     Text(host.name, style = MaterialTheme.typography.titleMedium)
                 }
-                Text("${host.username}@${host.hostname}:${host.port}")
+                Text(
+                    if (host.webGatewayOnly) "${host.hostname}:${host.httpsPort} — passerelle web"
+                    else "${host.username}@${host.hostname}:${host.port}",
+                )
             }
 
             if (editMode) {

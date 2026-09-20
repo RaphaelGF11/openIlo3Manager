@@ -59,6 +59,8 @@ class HostRepository(context: Context) {
         put("port", host.port)
         put("httpsPort", host.httpsPort)
         put("alwaysOpenVsp", host.alwaysOpenVsp)
+        put("defaultTab", host.defaultTab.name)
+        put("webGatewayOnly", host.webGatewayOnly)
         put("username", host.username)
         put("authMethod", host.authMethod.name)
         put("password", host.password)
@@ -84,6 +86,8 @@ class HostRepository(context: Context) {
         port = o.getInt("port"),
         httpsPort = o.optInt("httpsPort", 443),
         alwaysOpenVsp = o.optBoolean("alwaysOpenVsp", false),
+        defaultTab = runCatching { HostTab.valueOf(o.optString("defaultTab")) }.getOrDefault(HostTab.POWER),
+        webGatewayOnly = o.optBoolean("webGatewayOnly", false),
         username = o.getString("username"),
         authMethod = AuthMethod.valueOf(o.getString("authMethod")),
         password = o.optString("password", ""),

@@ -29,6 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.raphaelgf11.ilo3manager.data.HostRepository
+import net.raphaelgf11.ilo3manager.data.HostTab
 import net.raphaelgf11.ilo3manager.data.SettingsRepository
 import net.raphaelgf11.ilo3manager.data.SshHost
 import net.raphaelgf11.ilo3manager.ilo.IloWebApiClient
@@ -41,7 +42,9 @@ import net.raphaelgf11.ilo3manager.ui.vsp.VspTab
 import net.raphaelgf11.ilo3manager.ui.webgateway.WebGatewayTab
 import net.raphaelgf11.ilo3manager.webgateway.WebGatewayManager
 
-private val TAB_TITLES = listOf("Alim", "VSP", "SSH", "HW", "Web")
+/** Tabs available for a host: everything, or the gateway alone when no credentials are stored. */
+private fun tabsFor(host: SshHost): List<HostTab> =
+    if (host.webGatewayOnly) listOf(HostTab.WEB) else HostTab.entries
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,7 +59,10 @@ fun HostDetailScreen(
     // Held as state, not read straight from the parameter: enabling IPMI rewrites the stored host
     // mid-session, and the screen must reflect that without waiting for a restart.
     var host by remember(initialHost.id) { mutableStateOf(initialHost) }
-    var selectedTab by remember { mutableIntStateOf(0) }
+    val tabs = tabsFor(host)
+    var selectedTab by remember(host.id) {
+        mutableIntStateOf(tabs.indexOf(host.defaultTab).coerceAtLeast(0))
+    }
     val controlSession = remember(host.id) { HostSessionStore.controlSessionFor(host) }
     val vspSession = remember(host.id) { HostSessionStore.vspSessionFor(host) }
     val vspState by vspSession.connectionState.collectAsStateWithLifecycle()
@@ -72,11 +78,13 @@ fun HostDetailScreen(
     // Started here rather than in the VSP tab: the point is to have it ready before the tab is
     // opened. Only on entering a host, never from the list.
     LaunchedEffect(host.id, host.alwaysOpenVsp) {
-        if (host.alwaysOpenVsp) vspSession.connectIfNeeded()
+        if (host.alwaysOpenVsp && !host.webGatewayOnly) vspSession.connectIfNeeded()
     }
 
     LaunchedEffect(controlState, host.ipmiEnabled, host.ipmiPromptDismissed) {
-        if (controlState == ConnectionState.CONNECTED && !host.ipmiEnabled && !host.ipmiPromptDismissed) {
+        if (controlState == ConnectionState.CONNECTED && !host.ipmiEnabled &&
+            !host.ipmiPromptDismissed && !host.webGatewayOnly
+        ) {
             showIpmiSuggestion = true
         }
     }
@@ -116,21 +124,21 @@ fun HostDetailScreen(
                 .padding(padding),
         ) {
             TabRow(selectedTabIndex = selectedTab) {
-                TAB_TITLES.forEachIndexed { index, title ->
+                tabs.forEachIndexed { index, tab ->
                     Tab(
                         selected = selectedTab == index,
                         onClick = { selectedTab = index },
-                        text = { Text(title) },
+                        text = { Text(tab.title) },
                     )
                 }
             }
             androidx.compose.foundation.layout.Box(modifier = Modifier.weight(1f)) {
-                when (selectedTab) {
-                    0 -> PowerHealthTab(controlSession, settingsRepository)
-                    1 -> VspTab(vspSession)
-                    2 -> ConsoleTab(controlSession)
-                    3 -> HardwareTab(controlSession)
-                    4 -> WebGatewayTab(host)
+                when (tabs.getOrNull(selectedTab)) {
+                    HostTab.POWER -> PowerHealthTab(controlSession, settingsRepository)
+                    HostTab.VSP -> VspTab(vspSession)
+                    HostTab.CONSOLE -> ConsoleTab(controlSession)
+                    HostTab.HARDWARE -> HardwareTab(controlSession)
+                    HostTab.WEB, null -> WebGatewayTab(host)
                 }
             }
         }

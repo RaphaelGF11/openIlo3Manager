@@ -13,6 +13,14 @@ La fiche d'un serveur s'organise en quatre onglets. Le bouton **Enregistrer** re
 
 L'adresse est celle du processeur de gestion. Il possède sa propre adresse réseau, distincte de celle du système d'exploitation du serveur, et reste joignable même serveur éteint.
 
+**Onglet affiché à l'ouverture** — le serveur s'ouvre directement sur l'onglet choisi, utile si vous vous servez surtout de la console série ou de l'interface web.
+
+**Passerelle web uniquement** — le serveur n'expose que l'interface web de l'iLO, et **ne demande aucun identifiant** : les onglets Authentification et IPMI disparaissent, et seul l'onglet Web subsiste.
+
+L'authentification a lieu dans le navigateur, sur la page de connexion de l'iLO. L'application ne stocke donc rien.
+
+C'est la réponse au problème d'amorçage : un iLO3 dont aucun navigateur moderne n'accepte le TLS devient inatteignable, y compris pour y créer le compte dédié ou y déposer une clé publique dont les autres onglets auraient besoin. Ce mode permet d'y accéder d'abord, et de configurer un hôte complet ensuite.
+
 ## Onglet Authentification
 
 L'utilisateur et le secret servent à SSH, à IPMI et à l'interface web : c'est le même compte iLO.

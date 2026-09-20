@@ -1,6 +1,7 @@
 package net.raphaelgf11.ilo3manager.backup
 
 import net.raphaelgf11.ilo3manager.data.AuthMethod
+import net.raphaelgf11.ilo3manager.data.HostTab
 import net.raphaelgf11.ilo3manager.data.SshHost
 import net.raphaelgf11.ilo3manager.data.VpnType
 import net.raphaelgf11.ilo3manager.ipmi.IpmiPrivilege
@@ -37,6 +38,8 @@ object BackupPayload {
         put("port", host.port)
         put("httpsPort", host.httpsPort)
         put("alwaysOpenVsp", host.alwaysOpenVsp)
+        put("defaultTab", host.defaultTab.name)
+        put("webGatewayOnly", host.webGatewayOnly)
         put("username", host.username)
         put("authMethod", host.authMethod.name)
         put("password", host.password)
@@ -62,6 +65,8 @@ object BackupPayload {
         port = o.optInt("port", 22),
         httpsPort = o.optInt("httpsPort", 443),
         alwaysOpenVsp = o.optBoolean("alwaysOpenVsp", false),
+        defaultTab = runCatching { HostTab.valueOf(o.optString("defaultTab")) }.getOrDefault(HostTab.POWER),
+        webGatewayOnly = o.optBoolean("webGatewayOnly", false),
         username = o.optString("username", ""),
         authMethod = runCatching { AuthMethod.valueOf(o.optString("authMethod")) }
             .getOrDefault(AuthMethod.PASSWORD),

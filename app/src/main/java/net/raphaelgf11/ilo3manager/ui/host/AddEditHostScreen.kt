@@ -53,6 +53,7 @@ import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import net.raphaelgf11.ilo3manager.data.AuthMethod
 import net.raphaelgf11.ilo3manager.data.HostRepository
+import net.raphaelgf11.ilo3manager.data.HostTab
 import net.raphaelgf11.ilo3manager.data.SshHost
 import net.raphaelgf11.ilo3manager.data.VpnType
 import net.raphaelgf11.ilo3manager.ipmi.IpmiPrivilege
@@ -63,7 +64,15 @@ import net.raphaelgf11.ilo3manager.ssh.SshKeyGenerator
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
-private val TAB_TITLES = listOf("Général", "Authentification", "IPMI", "VPN")
+private const val TAB_GENERAL = "Général"
+private const val TAB_AUTH = "Authentification"
+private const val TAB_IPMI = "IPMI"
+private const val TAB_VPN = "VPN"
+
+/** Credentials and IPMI are meaningless for a gateway-only host, so those tabs disappear. */
+private fun tabsFor(webGatewayOnly: Boolean): List<String> =
+    if (webGatewayOnly) listOf(TAB_GENERAL, TAB_VPN)
+    else listOf(TAB_GENERAL, TAB_AUTH, TAB_IPMI, TAB_VPN)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,6 +92,11 @@ fun AddEditHostScreen(
     var port by remember { mutableStateOf((existingHost?.port ?: 22).toString()) }
     var httpsPort by remember { mutableStateOf((existingHost?.httpsPort ?: 443).toString()) }
     var alwaysOpenVsp by remember { mutableStateOf(existingHost?.alwaysOpenVsp ?: false) }
+    var defaultTab by remember { mutableStateOf(existingHost?.defaultTab ?: HostTab.POWER) }
+    var webGatewayOnly by remember { mutableStateOf(existingHost?.webGatewayOnly ?: false) }
+    val tabs = tabsFor(webGatewayOnly)
+    // Switching the mode shortens the tab list; without this the selection could point past its end.
+    if (selectedTab >= tabs.size) selectedTab = 0
     var username by remember { mutableStateOf(existingHost?.username ?: "") }
     var authMethod by remember { mutableStateOf(existingHost?.authMethod ?: AuthMethod.PASSWORD) }
     // Secrets are never re-displayed when editing an existing host: these start blank and, if
@@ -152,6 +166,8 @@ fun AddEditHostScreen(
                             port = port.toIntOrNull() ?: 22,
                             httpsPort = httpsPort.toIntOrNull() ?: 443,
                             alwaysOpenVsp = alwaysOpenVsp,
+                            defaultTab = if (webGatewayOnly) HostTab.WEB else defaultTab,
+                            webGatewayOnly = webGatewayOnly,
                             username = username,
                             authMethod = authMethod,
                             password = password.ifBlank { existingHost?.password ?: "" },
@@ -175,7 +191,9 @@ fun AddEditHostScreen(
                         HostSessionStore.updateHost(host)
                         onDone()
                     },
-                    enabled = name.isNotBlank() && hostname.isNotBlank() && username.isNotBlank(),
+                    // A gateway-only host authenticates in the browser, so it stores no account.
+                    enabled = name.isNotBlank() && hostname.isNotBlank() &&
+                        (webGatewayOnly || username.isNotBlank()),
                     modifier = Modifier
                         .fillMaxWidth()
                         // Without these the button sits under the system navigation bar, and under
@@ -193,7 +211,7 @@ fun AddEditHostScreen(
             .fillMaxSize()
             .padding(padding)) {
             TabRow(selectedTabIndex = selectedTab) {
-                TAB_TITLES.forEachIndexed { index, title ->
+                tabs.forEachIndexed { index, title ->
                     Tab(
                         selected = selectedTab == index,
                         onClick = { selectedTab = index },
@@ -208,8 +226,8 @@ fun AddEditHostScreen(
                     .padding(16.dp)
                     .verticalScroll(rememberScrollState()),
             ) {
-                when (selectedTab) {
-                    0 -> GeneralTab(
+                when (tabs.getOrNull(selectedTab)) {
+                    TAB_GENERAL -> GeneralTab(
                         name = name,
                         onNameChange = { name = it },
                         hostname = hostname,
@@ -220,8 +238,12 @@ fun AddEditHostScreen(
                         onHttpsPortChange = { httpsPort = it },
                         alwaysOpenVsp = alwaysOpenVsp,
                         onAlwaysOpenVspChange = { alwaysOpenVsp = it },
+                        defaultTab = defaultTab,
+                        onDefaultTabChange = { defaultTab = it },
+                        webGatewayOnly = webGatewayOnly,
+                        onWebGatewayOnlyChange = { webGatewayOnly = it },
                     )
-                    1 -> AuthenticationTab(
+                    TAB_AUTH -> AuthenticationTab(
                         isNewHost = existingHost == null,
                         username = username,
                         onUsernameChange = { username = it },
@@ -245,7 +267,7 @@ fun AddEditHostScreen(
                             }
                         },
                     )
-                    3 -> VpnTab(
+                    TAB_VPN -> VpnTab(
                         type = vpnType,
                         onTypeChange = { vpnType = it },
                         wireGuardConfig = wireGuardConfig,
@@ -260,7 +282,7 @@ fun AddEditHostScreen(
                             setCaptureActivity(PortraitCaptureActivity::class.java)
                         }) },
                     )
-                    2 -> IpmiTab(
+                    TAB_IPMI -> IpmiTab(
                         enabled = ipmiEnabled,
                         onEnabledChange = { ipmiEnabled = it },
                         showStateInList = showStateInList,
@@ -277,6 +299,8 @@ fun AddEditHostScreen(
                         hasStoredPassword = !existingHost?.password.isNullOrBlank(),
                         typedPassword = password,
                     )
+                    // Unreachable: the selection is always an index into the list built above.
+                    else -> Unit
                 }
             }
         }
@@ -295,6 +319,10 @@ private fun GeneralTab(
     onHttpsPortChange: (String) -> Unit,
     alwaysOpenVsp: Boolean,
     onAlwaysOpenVspChange: (Boolean) -> Unit,
+    defaultTab: HostTab,
+    onDefaultTabChange: (HostTab) -> Unit,
+    webGatewayOnly: Boolean,
+    onWebGatewayOnlyChange: (Boolean) -> Unit,
 ) {
     OutlinedTextField(
         value = name,
@@ -341,6 +369,37 @@ private fun GeneralTab(
             )
         }
         Switch(checked = alwaysOpenVsp, onCheckedChange = onAlwaysOpenVspChange)
+    }
+
+    Spacer()
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+            Text("Passerelle web uniquement")
+            Text(
+                "Le serveur n'expose que l'interface web de l'iLO et ne demande aucun identifiant : " +
+                    "l'authentification a lieu dans le navigateur, sur la page de connexion de " +
+                    "l'iLO. Utile pour atteindre un iLO dont aucun navigateur moderne ne veut, " +
+                    "justement pour y créer le compte dédié ou y déposer une clé.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Switch(checked = webGatewayOnly, onCheckedChange = onWebGatewayOnlyChange)
+    }
+
+    if (!webGatewayOnly) {
+        Spacer()
+        Text("Onglet affiché à l'ouverture")
+        HostTab.entries.forEach { candidate ->
+            RadioRow(
+                selected = defaultTab == candidate,
+                label = candidate.title,
+                onSelect = { onDefaultTabChange(candidate) },
+            )
+        }
     }
 }
 

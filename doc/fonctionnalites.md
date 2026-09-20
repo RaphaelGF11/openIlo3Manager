@@ -22,6 +22,8 @@ Le bleu prime sur l'état d'alimentation : on allume cette LED délibérément p
 
 Un glissement vers le bas actualise la liste et relance immédiatement les interrogations.
 
+Un hôte configuré en **passerelle web uniquement** n'affiche que l'onglet Web, et l'onglet ouvert par défaut est réglable par serveur — voir [Configuration d'un hôte](configuration-hote.md#onglet-général).
+
 ## Alimentation (Alim)
 
 État, santé globale, et les actions : démarrer, redémarrer, arrêter proprement, forcer l'arrêt. Les trois dernières demandent confirmation.
