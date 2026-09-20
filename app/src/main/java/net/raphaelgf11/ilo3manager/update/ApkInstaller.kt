@@ -1,11 +1,12 @@
 package net.raphaelgf11.ilo3manager.update
 
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import androidx.core.content.FileProvider
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -73,17 +74,37 @@ object ApkInstaller {
     }
 
     /**
-     * Presents the downloaded package to the system installer.
+     * Streams the downloaded package into a [PackageInstaller] session and commits it.
      *
-     * A FileProvider URI is required: since Android 7 a `file://` URI handed to another app throws.
+     * Not an `ACTION_VIEW` intent on the APK: that MIME type is claimed by archive managers and
+     * terminals too, so Android answers with an "open with" chooser in which the actual installer is
+     * merely one entry among several. A session addresses the package manager directly, and the
+     * system's own confirmation screen is then opened from [InstallResultReceiver].
      */
     fun install(context: Context, apk: File) {
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.updates", apk)
-        context.startActivity(
-            Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "application/vnd.android.package-archive")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-            },
+        val installer = context.packageManager.packageInstaller
+        val params = PackageInstaller.SessionParams(
+            PackageInstaller.SessionParams.MODE_FULL_INSTALL,
         )
+        val sessionId = installer.createSession(params)
+        installer.openSession(sessionId).use { session ->
+            session.openWrite(FILE_NAME, 0, apk.length()).use { output ->
+                apk.inputStream().use { it.copyTo(output) }
+                session.fsync(output)
+            }
+            // Mutable, because the system fills in the status extras before delivering it.
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_MUTABLE
+            } else {
+                0
+            }
+            val callback = PendingIntent.getBroadcast(
+                context,
+                sessionId,
+                Intent(context, InstallResultReceiver::class.java),
+                flags,
+            )
+            session.commit(callback.intentSender)
+        }
     }
 }
