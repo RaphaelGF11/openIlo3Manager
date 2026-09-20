@@ -77,6 +77,7 @@ class HostRepository(context: Context) {
         put("vpnType", host.vpnType.name)
         put("wireGuardConfig", host.wireGuardConfig)
         put("sshTunnelConfig", host.sshTunnelConfig)
+        put("nicAddresses", org.json.JSONArray(host.nicAddresses))
     }
 
     private fun fromJson(o: JSONObject) = SshHost(
@@ -111,6 +112,9 @@ class HostRepository(context: Context) {
         sshTunnelConfig = o.optString("sshTunnelConfig", "").ifBlank {
             if (o.optString("vpnType", "") == "SSH_TUNNEL") o.optString("vpnConfig", "") else ""
         },
+        nicAddresses = o.optJSONArray("nicAddresses")
+            ?.let { array -> List(4) { index -> array.optString(index, "") } }
+            ?: List(4) { "" },
     )
 
     companion object {

@@ -19,11 +19,17 @@ import (
 	"net/netip"
 	"strings"
 	"sync"
+	"time"
 
+	"golang.org/x/net/icmp"
+	"golang.org/x/net/ipv4"
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/tun/netstack"
 )
+
+// protocolICMP is the IANA number for ICMPv4, which icmp.ParseMessage needs to decode a reply.
+const protocolICMP = 1
 
 // Tunnel is a running WireGuard peer plus the local forwarders opened through it.
 type Tunnel struct {
@@ -165,6 +171,65 @@ func (t *Tunnel) ForwardUDP(host string, port int) (int, error) {
 		}
 	}()
 	return local.LocalAddr().(*net.UDPAddr).Port, nil
+}
+
+// Ping sends ICMP echo requests through the tunnel and reports whether any reply came back.
+//
+// This cannot be done from Kotlin. The tunnel has no system network interface, so the platform's
+// own ping command would leave by the Wi-Fi and never see it; the echo has to originate inside this
+// userspace stack. Returns true on the first reply rather than timing every attempt — the caller
+// wants to know whether the address answers, not how fast.
+func (t *Tunnel) Ping(address string, count int, timeoutMillis int) (bool, error) {
+	addr, err := netip.ParseAddr(trimSpace(address))
+	if err != nil {
+		return false, fmt.Errorf("adresse invalide %q: %w", address, err)
+	}
+	if addr.Is6() {
+		return false, errors.New("ICMPv6 non pris en charge")
+	}
+
+	socket, err := t.tnet.DialPingAddr(netip.Addr{}, addr)
+	if err != nil {
+		return false, err
+	}
+	defer socket.Close()
+
+	// A distinctive identifier keeps replies to our own echoes apart from anything else the stack
+	// happens to be carrying.
+	id := int(time.Now().UnixNano() & 0xFFFF)
+	buf := make([]byte, 1500)
+	for seq := 0; seq < count; seq++ {
+		request, err := (&icmp.Message{
+			Type: ipv4.ICMPTypeEcho,
+			Code: 0,
+			Body: &icmp.Echo{ID: id, Seq: seq, Data: []byte("ilo3manager")},
+		}).Marshal(nil)
+		if err != nil {
+			return false, err
+		}
+		if _, err := socket.Write(request); err != nil {
+			return false, err
+		}
+
+		deadline := time.Now().Add(time.Duration(timeoutMillis) * time.Millisecond)
+		if err := socket.SetReadDeadline(deadline); err != nil {
+			return false, err
+		}
+		for time.Now().Before(deadline) {
+			n, err := socket.Read(buf)
+			if err != nil {
+				break // Timed out on this attempt; try the next one.
+			}
+			reply, err := icmp.ParseMessage(protocolICMP, buf[:n])
+			if err != nil {
+				continue
+			}
+			if echo, ok := reply.Body.(*icmp.Echo); ok && echo.ID == id {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 // Status returns the device's UAPI state. The field that matters for diagnosis is

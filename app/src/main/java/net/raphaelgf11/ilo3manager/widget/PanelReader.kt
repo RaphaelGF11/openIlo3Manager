@@ -1,5 +1,9 @@
 package net.raphaelgf11.ilo3manager.widget
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.runBlocking
 import net.raphaelgf11.ilo3manager.data.SshHost
 import net.raphaelgf11.ilo3manager.ilo.IpmiSdrCache
 import net.raphaelgf11.ilo3manager.ipmi.ChassisPowerState
@@ -41,10 +45,34 @@ object PanelReader {
             // Sensors are only worth reading when the machine is running; on standby the SDR is
             // readable but every reading is "no reading", and the panel is dark anyway.
             val sensors = if (power == PowerLed.ON) readSensors(client, host.id) else emptyList()
-            fromSensors(power, status.identifyOn, status.hasCriticalFault, status.hasFault, sensors)
+            val panel = fromSensors(power, status.identifyOn, status.hasCriticalFault, status.hasFault, sensors)
+            // Only worth asking when the machine is running: a powered-down server answers nothing,
+            // and four timeouts would be four seconds added to every refresh.
+            if (power == PowerLed.ON) panel.copy(nics = pingNics(host)) else panel
         } finally {
             client.close()
         }
+    }
+
+    /**
+     * Lights each network indicator whose configured address answers an echo.
+     *
+     * All four at once: done in turn, four unanswered addresses would add four timeouts to every
+     * refresh. An address left blank stays dark rather than being reported as down — nothing was
+     * claimed about that port, so nothing is shown.
+     */
+    private fun pingNics(host: SshHost): List<LinkLed> = runBlocking {
+        host.nicAddresses.map { address ->
+            async(Dispatchers.IO) {
+                if (address.isBlank()) {
+                    LinkLed.OFF
+                } else if (HostTunnelManager.ping(host, address)) {
+                    LinkLed.GREEN
+                } else {
+                    LinkLed.OFF
+                }
+            }
+        }.awaitAll()
     }
 
     /**
@@ -109,7 +137,9 @@ object PanelReader {
             power = power,
             health = health,
             uid = uid,
-            nics = List(4) { index -> linkFor(sensors, index + 1) },
+            // Filled in afterwards by pinging the addresses the user assigned: no sensor on this
+            // hardware reports link, so nothing here can.
+            nics = List(4) { LinkLed.OFF },
             psus = List(2) { index -> ledFor(sensors, listOf("power supply", "ps "), index + 1) },
             overTemp = overTempLed(sensors),
             powerCap = Led.OFF,
@@ -119,24 +149,6 @@ object PanelReader {
             ampStatus = Led.OFF,
             fans = List(6) { index -> ledFor(sensors, listOf("fan"), index + 1) },
         )
-    }
-
-    /**
-     * Link state for one network port.
-     *
-     * The BMC names these sensors itself and the wording varies with firmware, so the match is by
-     * keyword and port number. A discrete sensor with any state bit asserted counts as up; a dark
-     * indicator therefore covers both "no link" and "this firmware reports nothing", which is what
-     * the panel does anyway.
-     */
-    private fun linkFor(sensors: List<IpmiSensor>, port: Int): LinkLed {
-        val match = sensors.firstOrNull { sensor ->
-            val name = sensor.name.lowercase()
-            val mentionsNic = name.contains("nic") || name.contains("lom") ||
-                name.contains("link") || name.contains("eth")
-            mentionsNic && mentionsSlot(name, port)
-        } ?: return LinkLed.OFF
-        return if (match.states != 0) LinkLed.GREEN else LinkLed.OFF
     }
 
     /** Worst health among sensors whose name carries one of [keywords] and the given [slot]. */

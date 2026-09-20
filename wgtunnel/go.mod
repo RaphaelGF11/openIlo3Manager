@@ -4,6 +4,7 @@ go 1.26.0
 
 require (
 	golang.org/x/mobile v0.0.0-20260908204917-8b95e45f8d3e
+	golang.org/x/net v0.59.0
 	golang.zx2c4.com/wireguard v0.0.0-20231211153847-12269c276173
 )
 
@@ -11,7 +12,6 @@ require (
 	github.com/google/btree v1.0.1 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/mod v0.41.0 // indirect
-	golang.org/x/net v0.59.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/time v0.0.0-20220210224613-90d013bbcef8 // indirect

@@ -35,6 +35,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -92,6 +93,12 @@ fun AddEditHostScreen(
     var port by remember { mutableStateOf((existingHost?.port ?: 22).toString()) }
     var httpsPort by remember { mutableStateOf((existingHost?.httpsPort ?: 443).toString()) }
     var alwaysOpenVsp by remember { mutableStateOf(existingHost?.alwaysOpenVsp ?: false) }
+    val nicAddresses = remember {
+        mutableStateListOf<String>().apply {
+            addAll(existingHost?.nicAddresses ?: List(4) { "" })
+            while (size < 4) add("")
+        }
+    }
     var defaultTab by remember { mutableStateOf(existingHost?.defaultTab ?: HostTab.POWER) }
     var webGatewayOnly by remember { mutableStateOf(existingHost?.webGatewayOnly ?: false) }
     val tabs = tabsFor(webGatewayOnly)
@@ -166,6 +173,7 @@ fun AddEditHostScreen(
                             port = port.toIntOrNull() ?: 22,
                             httpsPort = httpsPort.toIntOrNull() ?: 443,
                             alwaysOpenVsp = alwaysOpenVsp,
+                            nicAddresses = nicAddresses.toList(),
                             defaultTab = if (webGatewayOnly) HostTab.WEB else defaultTab,
                             webGatewayOnly = webGatewayOnly,
                             username = username,
@@ -238,6 +246,7 @@ fun AddEditHostScreen(
                         onHttpsPortChange = { httpsPort = it },
                         alwaysOpenVsp = alwaysOpenVsp,
                         onAlwaysOpenVspChange = { alwaysOpenVsp = it },
+                        nicAddresses = nicAddresses,
                         defaultTab = defaultTab,
                         onDefaultTabChange = { defaultTab = it },
                         webGatewayOnly = webGatewayOnly,
@@ -318,6 +327,7 @@ private fun GeneralTab(
     httpsPort: String,
     onHttpsPortChange: (String) -> Unit,
     alwaysOpenVsp: Boolean,
+    nicAddresses: androidx.compose.runtime.snapshots.SnapshotStateList<String>,
     onAlwaysOpenVspChange: (Boolean) -> Unit,
     defaultTab: HostTab,
     onDefaultTabChange: (HostTab) -> Unit,
@@ -369,6 +379,25 @@ private fun GeneralTab(
             )
         }
         Switch(checked = alwaysOpenVsp, onCheckedChange = onAlwaysOpenVspChange)
+    }
+
+    Spacer()
+    Text("Adresses des cartes réseau", style = MaterialTheme.typography.titleSmall)
+    Text(
+        "Une adresse par port, dans l'ordre du panneau avant. Les voyants réseau s'allument quand " +
+            "l'adresse répond à un ping. C'est une approximation : ils indiquent en réalité l'état " +
+            "du lien, que ni l'IPMI ni l'API de l'iLO ne rapportent — un port câblé mais sans " +
+            "adresse restera donc éteint ici. Laissez vide les ports que vous ne suivez pas.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    nicAddresses.forEachIndexed { index, address ->
+        OutlinedTextField(
+            value = address,
+            onValueChange = { nicAddresses[index] = it.trim() },
+            label = { Text("Port ${index + 1}") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 
     Spacer()

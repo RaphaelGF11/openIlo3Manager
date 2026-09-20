@@ -101,6 +101,47 @@ object HostTunnelManager {
         return Endpoint("127.0.0.1", localPort)
     }
 
+    /**
+     * ICMP echo to [address], by whichever route this host is reached.
+     *
+     * Behind WireGuard the echo has to originate inside the userspace stack: the tunnel has no
+     * system network interface, so the platform's own ping command would leave by the Wi-Fi and
+     * never see it. Without a tunnel that command is exactly what is needed, since an ordinary
+     * Android app cannot open a raw socket.
+     *
+     * An SSH jump host carries only TCP, so nothing can be pinged through one.
+     */
+    fun ping(host: SshHost, address: String, count: Int = 3, timeoutMs: Int = 1_000): Boolean {
+        if (address.isBlank()) return false
+        return when (host.vpnType) {
+            VpnType.WIREGUARD -> {
+                // Reuses the tunnel the rest of the app already opened for this host.
+                val tunnel = wgTunnels[host.id]?.tunnel ?: return false
+                runCatching { tunnel.ping(address, count.toLong(), timeoutMs.toLong()) }.getOrDefault(false)
+            }
+            VpnType.SSH_TUNNEL -> false
+            VpnType.NONE -> systemPing(address, count, timeoutMs)
+        }
+    }
+
+    private fun systemPing(address: String, count: Int, timeoutMs: Int): Boolean = runCatching {
+        val seconds = ((timeoutMs + 999) / 1000).coerceAtLeast(1)
+        val process = ProcessBuilder("/system/bin/ping", "-c", "$count", "-W", "$seconds", address)
+            .redirectErrorStream(true)
+            .start()
+        process.inputStream.close()
+        val finished = process.waitFor(
+            (count.toLong() * seconds + 2) * 1000,
+            java.util.concurrent.TimeUnit.MILLISECONDS,
+        )
+        if (!finished) {
+            process.destroy()
+            false
+        } else {
+            process.exitValue() == 0
+        }
+    }.getOrDefault(false)
+
     /** True when the tunnel in use can carry UDP; SSH port forwarding cannot. */
     fun supportsUdp(host: SshHost): Boolean = when (host.vpnType) {
         VpnType.NONE -> true

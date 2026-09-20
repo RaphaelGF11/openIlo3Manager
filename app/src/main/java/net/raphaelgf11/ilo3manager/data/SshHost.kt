@@ -81,6 +81,16 @@ data class SshHost(
      */
     val wireGuardConfig: String = "",
     val sshTunnelConfig: String = "",
+    /**
+     * One address per embedded network port, in panel order, blank where unknown.
+     *
+     * The front panel's network indicators show link, which nothing the app can reach reports:
+     * IPMI has no NIC sensor and iLO's own API gives each port's MAC and nothing more. Pinging an
+     * address the user assigns to a port is an approximation of that — it proves the operating
+     * system answers on that port, not that the cable is live — but it is the only signal
+     * available, and only the user knows which address sits on which port.
+     */
+    val nicAddresses: List<String> = List(4) { "" },
 )
 
 /** Kinds of tunnel a host can be reached through. */
