@@ -12,6 +12,7 @@
 package wgtunnel
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -194,15 +195,17 @@ func (t *Tunnel) Ping(address string, count int, timeoutMillis int) (bool, error
 	}
 	defer socket.Close()
 
-	// A distinctive identifier keeps replies to our own echoes apart from anything else the stack
-	// happens to be carrying.
+	// The reply is matched on sequence number and payload, never on the identifier: gVisor rewrites
+	// the ICMP id with its own endpoint port on the way out, so the id that comes back is not the
+	// one that was sent.
+	payload := []byte("ilo3manager-echo")
 	id := int(time.Now().UnixNano() & 0xFFFF)
 	buf := make([]byte, 1500)
 	for seq := 0; seq < count; seq++ {
 		request, err := (&icmp.Message{
 			Type: ipv4.ICMPTypeEcho,
 			Code: 0,
-			Body: &icmp.Echo{ID: id, Seq: seq, Data: []byte("ilo3manager")},
+			Body: &icmp.Echo{ID: id, Seq: seq, Data: payload},
 		}).Marshal(nil)
 		if err != nil {
 			return false, err
@@ -224,7 +227,8 @@ func (t *Tunnel) Ping(address string, count int, timeoutMillis int) (bool, error
 			if err != nil {
 				continue
 			}
-			if echo, ok := reply.Body.(*icmp.Echo); ok && echo.ID == id {
+			if echo, ok := reply.Body.(*icmp.Echo); ok &&
+				echo.Seq == seq && bytes.Equal(echo.Data, payload) {
 				return true, nil
 			}
 		}

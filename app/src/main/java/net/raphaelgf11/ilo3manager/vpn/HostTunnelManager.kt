@@ -116,8 +116,14 @@ object HostTunnelManager {
         return when (host.vpnType) {
             VpnType.WIREGUARD -> {
                 // Reuses the tunnel the rest of the app already opened for this host.
-                val tunnel = wgTunnels[host.id]?.tunnel ?: return false
-                runCatching { tunnel.ping(address, count.toLong(), timeoutMs.toLong()) }.getOrDefault(false)
+                val tunnel = wgTunnels[host.id]?.tunnel
+                if (tunnel == null) {
+                    android.util.Log.d("NicPing", "$address -> aucun tunnel ouvert")
+                    return false
+                }
+                runCatching { tunnel.ping(address, count.toLong(), timeoutMs.toLong()) }
+                    .onFailure { android.util.Log.d("NicPing", "$address : ${it.message}") }
+                    .getOrDefault(false)
             }
             VpnType.SSH_TUNNEL -> false
             VpnType.NONE -> systemPing(address, count, timeoutMs)
@@ -129,18 +135,19 @@ object HostTunnelManager {
         val process = ProcessBuilder("/system/bin/ping", "-c", "$count", "-W", "$seconds", address)
             .redirectErrorStream(true)
             .start()
-        process.inputStream.close()
-        val finished = process.waitFor(
-            (count.toLong() * seconds + 2) * 1000,
-            java.util.concurrent.TimeUnit.MILLISECONDS,
-        )
-        if (!finished) {
-            process.destroy()
-            false
-        } else {
-            process.exitValue() == 0
+        // The output has to be drained, not closed: ping writing a line into a closed pipe takes a
+        // SIGPIPE and dies, which reads back as a failed ping however well the host answered.
+        val output = process.inputStream.bufferedReader().use { it.readText() }
+        // ping exits on its own once the count is reached, so this cannot hang indefinitely.
+        val code = process.waitFor()
+        if (code != 0) {
+            android.util.Log.d("NicPing", "$address -> code $code: ${output.trim().takeLast(200)}")
         }
-    }.getOrDefault(false)
+        code == 0
+    }.getOrElse {
+        android.util.Log.d("NicPing", "$address -> ${it.message}")
+        false
+    }
 
     /** True when the tunnel in use can carry UDP; SSH port forwarding cannot. */
     fun supportsUdp(host: SshHost): Boolean = when (host.vpnType) {
