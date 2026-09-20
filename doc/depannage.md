@@ -90,7 +90,7 @@ L'API Google Drive n'est pas activée dans le projet Cloud. Activez-la, puis pat
 
 **« Ce compte est connecté mais n'a pas accordé l'accès »**
 
-La demande d'autorisation a été refusée ou ignorée. Utilisez le bouton qui la relance ; il révoque d'abord l'accès, sans quoi Google réutiliserait silencieusement l'autorisation précédente et l'écran ne réapparaîtrait pas.
+Cause la plus fréquente : sur l'écran de consentement, la case « données de configuration dans Google Drive » est restée **décochée**. Google la présente ainsi par défaut, et valider sans la cocher lie le compte sans rien accorder — aucune application ne peut la cocher à votre place. Utilisez le bouton qui la relance ; il révoque d'abord l'accès, sans quoi Google réutiliserait silencieusement l'autorisation précédente et l'écran ne réapparaîtrait pas.
 
 **« Phrase secrète incorrecte »**
 

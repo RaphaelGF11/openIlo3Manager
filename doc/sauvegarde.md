@@ -29,6 +29,12 @@ La clé est donc dérivée de votre phrase, qui voyage avec vous. Une copie est 
 
 La restauration n'écrit **qu'après** déchiffrement réussi : une phrase erronée ne laisse jamais l'appareil à moitié restauré. Elle remplace les hôtes présents.
 
+### La case Drive doit être cochée
+
+L'écran de consentement de Google présente le périmètre Drive comme une option, **décochée par défaut** : c'est son mécanisme de consentement granulaire. Valider sans la cocher connecte le compte **sans accorder le moindre accès**, et la sauvegarde échouera.
+
+Aucune application ne peut pré-cocher cette case. Si vous l'avez manquée, utilisez le bouton qui relance l'autorisation et cochez-la.
+
 ### Connexion et consentement sont deux choses
 
 Un compte peut être lié alors que la demande d'autorisation Drive a été refusée ou ignorée : l'application dispose alors d'un compte inutilisable. Elle vérifie donc explicitement l'autorisation, l'affiche, et désactive Sauvegarder et Restaurer tant qu'elle manque.

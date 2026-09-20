@@ -109,6 +109,16 @@ fun DriveSyncSection(hostRepository: HostRepository) {
                 "n'est pas téléchargeable depuis celle-ci.",
             style = MaterialTheme.typography.bodySmall,
         )
+        // Google's granular consent lists the scope as an optional, unchecked box: validating
+        // without ticking it links the account and grants nothing. No app can pre-tick it, so the
+        // only remedy is to say so before the screen appears.
+        Text(
+            "Sur l'écran Google, pensez à cocher la case « données de configuration dans Google " +
+                "Drive » : elle est décochée par défaut, et sans elle le compte est connecté sans " +
+                "aucun accès.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
 
         if (account == null) {
             Button(
@@ -145,7 +155,8 @@ fun DriveSyncSection(hostRepository: HostRepository) {
             if (!hasConsent) {
                 Text(
                     "Ce compte est connecté mais n'a pas accordé l'accès à l'espace privé Drive : " +
-                        "la sauvegarde échouerait.",
+                        "la sauvegarde échouerait. La case correspondante est restée décochée sur " +
+                        "l'écran de consentement — relancez l'autorisation et cochez-la.",
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                 )
