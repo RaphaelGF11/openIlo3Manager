@@ -165,6 +165,10 @@ class ControlSessionController(private var host: SshHost) {
                 refreshDashboardOverIpmi()
                 report(null)
                 _dashboardState.value = ConnectionState.CONNECTED
+                // Deliberately here and not in refreshDashboard(): this runs when the user opens
+                // the host, never on an auto-refresh, and never from the list's polling — which
+                // would otherwise open an SSH session per monitored server.
+                if (host.alwaysOpenSsh) ensureSshConnected()
             } catch (e: Exception) {
                 _errorMessage.value = e.message ?: "Connexion IPMI impossible"
                 _dashboardState.value = ConnectionState.ERROR

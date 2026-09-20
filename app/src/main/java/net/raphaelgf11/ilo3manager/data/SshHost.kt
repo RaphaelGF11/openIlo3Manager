@@ -46,6 +46,12 @@ data class SshHost(
      * shows sensors rather than inventory: no per-DIMM or per-CPU detail, no serial numbers.
      */
     val hardwareOverIpmi: Boolean = false,
+    /**
+     * Open the SSH session in the background once the IPMI dashboard has loaded, rather than
+     * waiting for a tab to need it. Only when the user actually opens the host: polling the list
+     * must never start a session per server.
+     */
+    val alwaysOpenSsh: Boolean = false,
     val vpnType: VpnType = VpnType.NONE,
     /**
      * Each tunnel type keeps its own field rather than sharing one.

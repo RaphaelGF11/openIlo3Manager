@@ -47,6 +47,12 @@ Ce réglage sert à demander ce que votre compte peut réellement obtenir — in
 
 **Onglet HW via IPMI** — voir [Fonctionnalités](fonctionnalites.md#matériel-hw).
 
+**Toujours ouvrir la session SSH** — une fois l'onglet Alim affiché par IPMI, la session SSH s'ouvre en arrière-plan sans attendre qu'un onglet la réclame. Les onglets VSP, SSH et Matériel deviennent alors immédiatement utilisables, au lieu de faire patienter quelques secondes au premier affichage.
+
+C'est utile lorsque le compte est limité à la lecture en IPMI — les actions d'alimentation repassent alors par la CLI — ou simplement si vous consultez souvent ces onglets.
+
+L'ouverture n'a lieu qu'**à l'ouverture d'un serveur**, jamais lors d'un rafraîchissement automatique ni depuis la liste : surveiller plusieurs serveurs ouvrirait sinon une session SSH sur chacun, ce que le faible nombre de sessions simultanées d'un iLO3 ne supporterait pas.
+
 ### Activer IPMI sur l'iLO
 
 IPMI/DCMI par LAN est **désactivé par défaut** sur iLO3. L'application propose de l'activer après votre première connexion SSH, en demandant toujours confirmation.

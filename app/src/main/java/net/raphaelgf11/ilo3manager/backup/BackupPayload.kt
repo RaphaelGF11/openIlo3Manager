@@ -48,6 +48,7 @@ object BackupPayload {
         put("ipmiPromptDismissed", host.ipmiPromptDismissed)
         put("showStateInList", host.showStateInList)
         put("hardwareOverIpmi", host.hardwareOverIpmi)
+        put("alwaysOpenSsh", host.alwaysOpenSsh)
         put("vpnType", host.vpnType.name)
         put("wireGuardConfig", host.wireGuardConfig)
         put("sshTunnelConfig", host.sshTunnelConfig)
@@ -73,6 +74,7 @@ object BackupPayload {
         ipmiPromptDismissed = o.optBoolean("ipmiPromptDismissed", false),
         showStateInList = o.optBoolean("showStateInList", false),
         hardwareOverIpmi = o.optBoolean("hardwareOverIpmi", false),
+        alwaysOpenSsh = o.optBoolean("alwaysOpenSsh", false),
         vpnType = runCatching { VpnType.valueOf(o.optString("vpnType")) }.getOrDefault(VpnType.NONE),
         wireGuardConfig = o.optString("wireGuardConfig", ""),
         sshTunnelConfig = o.optString("sshTunnelConfig", ""),

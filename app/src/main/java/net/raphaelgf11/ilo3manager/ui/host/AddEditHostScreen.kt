@@ -95,6 +95,7 @@ fun AddEditHostScreen(
     var showStateInList by remember { mutableStateOf(existingHost?.showStateInList ?: false) }
     var hardwareOverIpmi by remember { mutableStateOf(existingHost?.hardwareOverIpmi ?: false) }
     var ipmiPrivilege by remember { mutableStateOf(existingHost?.ipmiPrivilege ?: IpmiPrivilege.OPERATOR) }
+    var alwaysOpenSsh by remember { mutableStateOf(existingHost?.alwaysOpenSsh ?: false) }
     var vpnType by remember { mutableStateOf(existingHost?.vpnType ?: VpnType.NONE) }
     var wireGuardConfig by remember { mutableStateOf(existingHost?.wireGuardConfig ?: "") }
     var sshTunnelConfig by remember { mutableStateOf(existingHost?.sshTunnelConfig ?: "") }
@@ -161,6 +162,7 @@ fun AddEditHostScreen(
                             showStateInList = showStateInList && ipmiEnabled,
                             hardwareOverIpmi = hardwareOverIpmi && ipmiEnabled,
                             ipmiPrivilege = ipmiPrivilege,
+                            alwaysOpenSsh = alwaysOpenSsh && ipmiEnabled,
                             vpnType = vpnType,
                             wireGuardConfig = wireGuardConfig,
                             sshTunnelConfig = sshTunnelConfig,
@@ -263,6 +265,8 @@ fun AddEditHostScreen(
                         onHardwareOverIpmiChange = { hardwareOverIpmi = it },
                         privilege = ipmiPrivilege,
                         onPrivilegeChange = { ipmiPrivilege = it },
+                        alwaysOpenSsh = alwaysOpenSsh,
+                        onAlwaysOpenSshChange = { alwaysOpenSsh = it },
                         port = ipmiPort,
                         onPortChange = { ipmiPort = it },
                         authMethod = authMethod,
@@ -439,6 +443,8 @@ private fun IpmiTab(
     onHardwareOverIpmiChange: (Boolean) -> Unit,
     privilege: IpmiPrivilege,
     onPrivilegeChange: (IpmiPrivilege) -> Unit,
+    alwaysOpenSsh: Boolean,
+    onAlwaysOpenSshChange: (Boolean) -> Unit,
     port: String,
     onPortChange: (String) -> Unit,
     authMethod: AuthMethod,
@@ -520,6 +526,25 @@ private fun IpmiTab(
                 )
             }
             Switch(checked = hardwareOverIpmi, onCheckedChange = onHardwareOverIpmiChange)
+        }
+        Spacer()
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                Text("Toujours ouvrir la session SSH")
+                Text(
+                    "Une fois l'onglet Alim affiché par IPMI, la session SSH s'ouvre en arrière-plan " +
+                        "au lieu d'attendre qu'un onglet en ait besoin : les onglets VSP, SSH et " +
+                        "Matériel sont alors immédiatement utilisables. Utile si IPMI est limité à " +
+                        "la lecture, ou si vous vous servez souvent de ces onglets. " +
+                        "Uniquement à l'ouverture d'un serveur — jamais depuis la liste.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Switch(checked = alwaysOpenSsh, onCheckedChange = onAlwaysOpenSshChange)
         }
         Spacer()
         OutlinedTextField(
