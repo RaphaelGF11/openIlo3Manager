@@ -3,6 +3,7 @@ package net.raphaelgf11.ilo3manager.ui.settings
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -51,6 +52,10 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                // The activity draws edge to edge, which stops `adjustResize` from shrinking the
+                // window: without this the keyboard simply covers whatever field has focus, and the
+                // backup passphrase ends up being typed blind.
+                .imePadding()
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
         ) {

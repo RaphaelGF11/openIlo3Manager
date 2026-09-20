@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -15,6 +16,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,6 +60,7 @@ fun DriveSyncSection(hostRepository: HostRepository) {
     var message by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var lastSync by remember { mutableStateOf(secretStore.lastSyncAt) }
+    var confirmDelete by remember { mutableStateOf(false) }
 
     val signIn = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -235,6 +238,16 @@ fun DriveSyncSection(hostRepository: HostRepository) {
             }
         }
 
+        // The only way out for the user: the application data folder is invisible in the Drive
+        // interface, so nothing in Google's own screens can remove this file.
+        TextButton(
+            onClick = { confirmDelete = true },
+            enabled = !busy && account != null && hasConsent,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Supprimer la sauvegarde", color = MaterialTheme.colorScheme.error)
+        }
+
         if (busy) {
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -243,5 +256,35 @@ fun DriveSyncSection(hostRepository: HostRepository) {
         }
         message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+    }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Supprimer la sauvegarde ?") },
+            text = {
+                Text(
+                    "Le fichier sera effacé de votre Drive. Si cet appareil est le seul à porter " +
+                        "vos hôtes, leurs identifiants n'existeront plus nulle part ailleurs. " +
+                        "Le compte Google reste connecté.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    run("la suppression") {
+                        DriveSync.deleteBackup(context)
+                        secretStore.lastSyncAt = 0L
+                        lastSync = 0L
+                        "Sauvegarde supprimée de Google Drive."
+                    }
+                }) {
+                    Text("Supprimer", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) { Text("Annuler") }
+            },
+        )
     }
 }

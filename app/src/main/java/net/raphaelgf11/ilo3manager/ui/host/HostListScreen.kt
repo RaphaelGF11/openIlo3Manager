@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import net.raphaelgf11.ilo3manager.data.NotificationSettingsRepository
@@ -129,7 +130,13 @@ fun HostListScreen(
                     .padding(padding),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("Aucun hôte enregistré. Appuyez sur + pour en ajouter un.")
+                // Centring the box does not inset the text: without a margin the sentence wraps
+                // against both screen edges and its first letters are clipped.
+                Text(
+                    "Aucun hôte enregistré. Appuyez sur + pour en ajouter un.",
+                    modifier = Modifier.padding(horizontal = 32.dp),
+                    textAlign = TextAlign.Center,
+                )
             }
         } else {
             // Pull to refresh: re-reads the stored hosts and lets each row's poller take a fresh

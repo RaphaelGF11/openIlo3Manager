@@ -45,7 +45,9 @@ Si — et seulement si — vous activez cette fonction et connectez un compte Go
 
 **Destinataire.** Votre propre compte Google Drive, et personne d'autre. Les données ne transitent par aucun serveur intermédiaire : l'application dialogue directement avec l'API Google Drive.
 
-**Suppression.** Vous pouvez à tout moment vous déconnecter depuis les réglages de l'application, ce qui révoque son accès à votre compte. Vous pouvez également retirer cette autorisation depuis [la page des applications tierces de votre compte Google](https://myaccount.google.com/permissions). Supprimer l'application efface toutes les données locales ; la sauvegarde éventuellement présente dans l'espace applicatif Drive peut être supprimée depuis les réglages de stockage de votre compte Google.
+**Suppression.** Les réglages de l'application comportent un bouton **Supprimer la sauvegarde**, qui efface le fichier de votre Drive. C'est la voie à privilégier : l'espace applicatif n'étant pas exposé par l'interface de Drive, vous ne pouvez pas y supprimer ce fichier vous-même.
+
+Indépendamment, **Déconnecter** révoque l'accès de l'application à votre compte sans rien effacer, et vous pouvez retirer cette autorisation depuis [la page des applications tierces de votre compte Google](https://myaccount.google.com/permissions). Désinstaller l'application efface toutes les données locales, mais **pas** la sauvegarde Drive : supprimez-la avant, si c'est votre intention.
 
 ## Partage avec des tiers
 

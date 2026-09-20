@@ -41,6 +41,14 @@ Un compte peut être lié alors que la demande d'autorisation Drive a été refu
 
 Le bouton **Déconnecter** révoque l'accès plutôt que de simplement oublier le compte, afin que la prochaine connexion reparte d'un consentement explicite. La sauvegarde déjà présente sur Drive n'est pas supprimée.
 
+## Supprimer la sauvegarde
+
+**Supprimer la sauvegarde** efface le fichier de votre Drive, après confirmation. Le compte reste connecté.
+
+Ce bouton n'est pas un agrément : l'espace applicatif n'apparaissant nulle part dans l'interface de Drive, vous n'avez aucun moyen d'y supprimer ce fichier par vous-même. Sans lui, une sauvegarde survivrait à toute demande d'effacement — y compris à la désinstallation de l'application, qui n'efface que les données locales.
+
+> Si cet appareil est le seul à porter vos hôtes, la suppression laisse leurs identifiants sans aucune copie.
+
 ## Prérequis : votre propre projet Google Cloud
 
 Cette fonction exige une configuration que l'auteur de l'application ne peut pas fournir à votre place, Google liant l'autorisation à la signature de **votre** build.

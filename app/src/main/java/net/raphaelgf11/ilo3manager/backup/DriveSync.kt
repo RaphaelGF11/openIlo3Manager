@@ -86,8 +86,15 @@ object DriveSync {
         return BackupPayload.deserialize(BackupCrypto.decrypt(sealed, secret))
     }
 
+    /**
+     * Erases the backup from Drive.
+     *
+     * The application data folder is not exposed by the Drive interface, so this is the only way a
+     * user can have that file removed: without it, the data would outlive any request to delete it.
+     */
     fun deleteBackup(context: Context) {
-        val account = signedInAccount(context)?.account ?: return
+        val account = signedInAccount(context)?.account
+            ?: throw IOException("Aucun compte Google connecté.")
         DriveAppDataClient(tokenFor(context, account)).deleteBackup()
     }
 }
