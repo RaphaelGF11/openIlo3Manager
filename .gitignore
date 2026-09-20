@@ -17,3 +17,6 @@ keystore.properties
 *.jks
 *.keystore
 local.properties
+
+# Passerelle PC : dépôt séparé, voir desktop-gateway/README.md
+desktop-gateway/
