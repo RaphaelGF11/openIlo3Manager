@@ -12,6 +12,13 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <!-- Offer a downloaded release to the system installer; Android still asks the user. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Optional, granted by hand in the system settings. It lets the front-panel widget tell
+         whether the launcher is in front, so it refreshes only while the user is looking at the
+         home screen instead of polling the BMC for the whole time the screen is on. Declaring it
+         is what makes the app appear in the Usage Access list; refusing it costs only that. -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
@@ -51,6 +58,37 @@
         <receiver
             android:name=".update.InstallResultReceiver"
             android:exported="false" />
+
+        <receiver
+            android:name=".widget.FrontPanelWidget"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_front_panel_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.PanelVisibilityReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.USER_PRESENT" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".widget.PanelTickReceiver"
+            android:exported="false" />
+
+        <activity
+            android:name=".widget.FrontPanelConfigActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
 
         <service
             android:name=".webgateway.WebGatewayForegroundService"
