@@ -27,6 +27,15 @@ data class IpmiSensor(
 
 enum class SensorHealth { OK, DEGRADED, CRITICAL, UNAVAILABLE }
 
+/**
+ * The result of enumerating the repository.
+ *
+ * [complete] is the part that matters: a truncated enumeration is not a smaller repository, it is a
+ * wrong one — the records that did arrive keep their sensor numbers, so readings taken against a
+ * partial list are attributed to whatever component happens to sit at that number.
+ */
+class SdrRepository(val entries: List<SdrEntry>, val complete: Boolean)
+
 /** Sensor Data Record description, before any reading is taken. */
 data class SdrEntry(
     val number: Int,
@@ -69,8 +78,23 @@ fun unitLabel(code: Int): String = when (code) {
  */
 class IpmiSensorReader(private val client: IpmiLanClient) {
 
-    /** Enumerates the SDR. Expensive relative to a reading, so callers should cache the result. */
-    fun readRepository(onProgress: (Int, Int) -> Unit = { _, _ -> }): List<SdrEntry> {
+    /**
+     * Enumerates the SDR. Expensive relative to a reading, so callers should cache the result —
+     * but only when [SdrRepository.complete] says the enumeration actually finished.
+     */
+    fun readRepository(onProgress: (Int, Int) -> Unit = { _, _ -> }): SdrRepository {
+        // A reservation is invalidated as soon as anyone else reserves the repository, and this app
+        // can have the dashboard, the host list and a widget talking to the same BMC. One attempt
+        // therefore is not enough; a lost reservation has to be taken again from the start.
+        repeat(REPOSITORY_ATTEMPTS) { attempt ->
+            val repository = enumerate(onProgress)
+            if (repository.complete) return repository
+            if (attempt == REPOSITORY_ATTEMPTS - 1) return repository
+        }
+        return SdrRepository(emptyList(), complete = false)
+    }
+
+    private fun enumerate(onProgress: (Int, Int) -> Unit): SdrRepository {
         val info = client.rawCommand(NET_FN_STORAGE, CMD_GET_SDR_INFO, ByteArray(0))
         val total = if (info.size >= 3) ((info[2].toInt() and 0xFF) shl 8) or (info[1].toInt() and 0xFF) else 0
         val reservation = client.rawCommand(NET_FN_STORAGE, CMD_RESERVE_SDR, ByteArray(0))
@@ -79,12 +103,14 @@ class IpmiSensorReader(private val client: IpmiLanClient) {
         var recordId = 0
         var scanned = 0
         while (recordId != END_OF_SDR) {
-            val record = readRecord(reservation, recordId) ?: break
+            // Stopping here leaves a repository that looks valid but is missing records, and the
+            // sensor numbers that follow would be attributed to the wrong components.
+            val record = readRecord(reservation, recordId) ?: return SdrRepository(entries, complete = false)
             parseRecord(record.bytes)?.let(entries::add)
             recordId = record.nextRecordId
             onProgress(++scanned, total)
         }
-        return entries
+        return SdrRepository(entries, complete = true)
     }
 
     private class RawRecord(val nextRecordId: Int, val bytes: ByteArray)
@@ -286,6 +312,7 @@ class IpmiSensorReader(private val client: IpmiLanClient) {
         const val CMD_GET_SENSOR_READING = 0x2D
         const val END_OF_SDR = 0xFFFF
         const val SENSOR_TYPE_POWER_SUPPLY = 0x08
+        const val REPOSITORY_ATTEMPTS = 3
         const val EVENT_TYPE_REDUNDANCY = 0x0B
         /** Small enough that a record chunk plus its two-byte prefix always fits in one reply. */
         const val CHUNK_SIZE = 16

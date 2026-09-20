@@ -1,6 +1,7 @@
 package net.raphaelgf11.ilo3manager.widget
 
 import net.raphaelgf11.ilo3manager.data.SshHost
+import net.raphaelgf11.ilo3manager.ilo.IpmiSdrCache
 import net.raphaelgf11.ilo3manager.ipmi.ChassisPowerState
 import net.raphaelgf11.ilo3manager.ipmi.IpmiLanClient
 import net.raphaelgf11.ilo3manager.ipmi.IpmiSensor
@@ -39,7 +40,7 @@ object PanelReader {
 
             // Sensors are only worth reading when the machine is running; on standby the SDR is
             // readable but every reading is "no reading", and the panel is dark anyway.
-            val sensors = if (power == PowerLed.ON) readSensors(client) else emptyList()
+            val sensors = if (power == PowerLed.ON) readSensors(client, host.id) else emptyList()
             fromSensors(power, status.identifyOn, status.hasCriticalFault, status.hasFault, sensors)
         } finally {
             client.close()
@@ -63,17 +64,21 @@ object PanelReader {
         )
         return try {
             client.open()
-            readSensors(client)
+            readSensors(client, host.id)
         } finally {
             client.close()
         }
     }
 
-    private fun readSensors(client: IpmiLanClient): List<IpmiSensor> {
-        val reader = IpmiSensorReader(client)
-        val repository = reader.readRepository()
-        return repository.mapNotNull { entry -> runCatching { reader.readSensor(entry) }.getOrNull() }
-    }
+    /**
+     * Shares the application's repository cache rather than enumerating its own.
+     *
+     * The widget, the host list and the dashboard all query the same BMC; each enumerating
+     * separately means their reservations cancel one another, and every one of them comes away
+     * with a different truncated repository.
+     */
+    private fun readSensors(client: IpmiLanClient, hostId: String): List<IpmiSensor> =
+        IpmiSdrCache.sensors(client, hostId)
 
     /**
      * Maps sensor readings onto panel positions.

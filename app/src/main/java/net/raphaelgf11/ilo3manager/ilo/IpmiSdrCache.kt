@@ -19,12 +19,34 @@ object IpmiSdrCache {
 
     private val entriesByHost = ConcurrentHashMap<String, List<SdrEntry>>()
 
+    /**
+     * Only one enumeration at a time, across the whole app.
+     *
+     * A repository reservation is invalidated the moment anyone else reserves, and the dashboard,
+     * the host list and the home screen widget all talk to the same BMC. Left to run concurrently
+     * they cancel each other's reservations, and each comes away with a different truncated list.
+     */
+    private val enumerating = java.util.concurrent.locks.ReentrantLock()
+
     fun entries(
         client: IpmiLanClient,
         hostId: String,
         onProgress: (Int, Int) -> Unit = { _, _ -> },
-    ): List<SdrEntry> = entriesByHost[hostId]
-        ?: IpmiSensorReader(client).readRepository(onProgress).also { entriesByHost[hostId] = it }
+    ): List<SdrEntry> {
+        entriesByHost[hostId]?.let { return it }
+        enumerating.lock()
+        try {
+            // Another caller may have finished while this one waited for the lock.
+            entriesByHost[hostId]?.let { return it }
+            val repository = IpmiSensorReader(client).readRepository(onProgress)
+            // A partial list is never cached: its records keep their sensor numbers, so readings
+            // taken against it land on the wrong components and stay wrong until the app restarts.
+            if (repository.complete) entriesByHost[hostId] = repository.entries
+            return repository.entries
+        } finally {
+            enumerating.unlock()
+        }
+    }
 
     fun sensors(client: IpmiLanClient, hostId: String): List<IpmiSensor> {
         val reader = IpmiSensorReader(client)
