@@ -23,7 +23,14 @@ data class SdrEntry(
     val exponentB: Int,
     val exponentR: Int,
     val signed: Boolean,
-)
+    /**
+     * Event/Reading Type Code. 0x01 marks a threshold sensor; anything else is discrete, and its
+     * reading byte carries asserted state bits rather than threshold comparisons.
+     */
+    val eventReadingType: Int = 0x01,
+) {
+    val thresholdBased: Boolean get() = eventReadingType == 0x01
+}
 
 /** Units, limited to those a server BMC actually reports. */
 fun unitLabel(code: Int): String = when (code) {
@@ -134,6 +141,7 @@ class IpmiSensorReader(private val client: IpmiLanClient) {
             exponentB = fourBitSigned(exponents and 0x0F),
             exponentR = fourBitSigned((exponents shr 4) and 0x0F),
             signed = (units1 shr 6) and 0x03 == 2,
+            eventReadingType = r[13].toInt() and 0xFF,
         )
     }
 
@@ -147,6 +155,7 @@ class IpmiSensorReader(private val client: IpmiLanClient) {
             analog = false,
             unitCode = 0,
             m = 1, b = 0, exponentB = 0, exponentR = 0, signed = false,
+            eventReadingType = r[13].toInt() and 0xFF,
         )
     }
 
@@ -174,9 +183,14 @@ class IpmiSensorReader(private val client: IpmiLanClient) {
 
         val health = when {
             unavailable -> SensorHealth.UNAVAILABLE
-            comparison and 0x24 != 0 -> SensorHealth.CRITICAL // upper/lower critical
-            comparison and 0x12 != 0 -> SensorHealth.CRITICAL // upper/lower non-recoverable
-            comparison and 0x09 != 0 -> SensorHealth.DEGRADED // upper/lower non-critical
+            entry.thresholdBased -> thresholdHealth(comparison)
+            // Sensor-specific discrete power supplies are worth decoding: they are the one family
+            // where a plain reading distinguishes a working unit from a failed one.
+            entry.eventReadingType == 0x6F && entry.sensorType == SENSOR_TYPE_POWER_SUPPLY ->
+                powerSupplyHealth(comparison)
+            // Any other discrete sensor reports asserted state bits whose meaning depends on the
+            // sensor type, and several of them assert bit 0 simply to say "present". Reading those
+            // as threshold comparisons is what marked healthy fans and power supplies as failing.
             else -> SensorHealth.OK
         }
 
@@ -187,6 +201,25 @@ class IpmiSensorReader(private val client: IpmiLanClient) {
             else -> "0x%02x".format(raw)
         }
         return IpmiSensor(entry.number, entry.name, entry.sensorType, reading, health)
+    }
+
+    private fun thresholdHealth(comparison: Int): SensorHealth = when {
+        comparison and 0x24 != 0 -> SensorHealth.CRITICAL // upper/lower critical
+        comparison and 0x12 != 0 -> SensorHealth.CRITICAL // upper/lower non-recoverable
+        comparison and 0x09 != 0 -> SensorHealth.DEGRADED // upper/lower non-critical
+        else -> SensorHealth.OK
+    }
+
+    /**
+     * Power supply state bits (IPMI table 42-3). Bit 0 is presence and says nothing about health,
+     * which is exactly the trap: a seated, working supply asserts it.
+     */
+    private fun powerSupplyHealth(states: Int): SensorHealth = when {
+        states and 0x02 != 0 -> SensorHealth.CRITICAL // failure detected
+        states and 0x08 != 0 -> SensorHealth.CRITICAL // AC lost
+        states and 0x04 != 0 -> SensorHealth.DEGRADED // predictive failure
+        states and 0x40 != 0 -> SensorHealth.DEGRADED // configuration error
+        else -> SensorHealth.OK
     }
 
     /** Applies the SDR's linear conversion: value = (M * raw + B * 10^Bexp) * 10^Rexp. */
@@ -214,6 +247,7 @@ class IpmiSensorReader(private val client: IpmiLanClient) {
         const val CMD_GET_SDR = 0x23
         const val CMD_GET_SENSOR_READING = 0x2D
         const val END_OF_SDR = 0xFFFF
+        const val SENSOR_TYPE_POWER_SUPPLY = 0x08
         /** Small enough that a record chunk plus its two-byte prefix always fits in one reply. */
         const val CHUNK_SIZE = 16
     }
