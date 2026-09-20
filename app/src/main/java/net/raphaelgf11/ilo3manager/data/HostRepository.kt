@@ -66,6 +66,11 @@ class HostRepository(context: Context) {
         put("ipmiEnabled", host.ipmiEnabled)
         put("ipmiPort", host.ipmiPort)
         put("ipmiPromptDismissed", host.ipmiPromptDismissed)
+        put("showStateInList", host.showStateInList)
+        put("hardwareOverIpmi", host.hardwareOverIpmi)
+        put("vpnType", host.vpnType.name)
+        put("wireGuardConfig", host.wireGuardConfig)
+        put("sshTunnelConfig", host.sshTunnelConfig)
     }
 
     private fun fromJson(o: JSONObject) = SshHost(
@@ -83,6 +88,17 @@ class HostRepository(context: Context) {
         ipmiEnabled = o.optBoolean("ipmiEnabled", false),
         ipmiPort = o.optInt("ipmiPort", 623),
         ipmiPromptDismissed = o.optBoolean("ipmiPromptDismissed", false),
+        showStateInList = o.optBoolean("showStateInList", false),
+        hardwareOverIpmi = o.optBoolean("hardwareOverIpmi", false),
+        vpnType = runCatching { VpnType.valueOf(o.optString("vpnType", "NONE")) }.getOrDefault(VpnType.NONE),
+        // "vpnConfig" was a single shared field before each type got its own; map it onto the
+        // matching one so an existing configuration survives the upgrade.
+        wireGuardConfig = o.optString("wireGuardConfig", "").ifBlank {
+            if (o.optString("vpnType", "") == "WIREGUARD") o.optString("vpnConfig", "") else ""
+        },
+        sshTunnelConfig = o.optString("sshTunnelConfig", "").ifBlank {
+            if (o.optString("vpnType", "") == "SSH_TUNNEL") o.optString("vpnConfig", "") else ""
+        },
     )
 
     companion object {

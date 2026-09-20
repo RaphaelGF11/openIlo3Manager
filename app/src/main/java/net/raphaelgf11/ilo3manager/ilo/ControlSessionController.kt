@@ -12,8 +12,12 @@ import net.raphaelgf11.ilo3manager.data.SshHost
 import net.raphaelgf11.ilo3manager.ipmi.ChassisControl
 import net.raphaelgf11.ilo3manager.ipmi.ChassisPowerState
 import net.raphaelgf11.ilo3manager.ipmi.IpmiLanClient
+import net.raphaelgf11.ilo3manager.ipmi.IpmiSensorReader
+import net.raphaelgf11.ilo3manager.ipmi.SdrEntry
+import net.raphaelgf11.ilo3manager.ipmi.SensorHealth
 import net.raphaelgf11.ilo3manager.ssh.ConnectionState
 import net.raphaelgf11.ilo3manager.ssh.IloCliClient
+import net.raphaelgf11.ilo3manager.vpn.HostTunnelManager
 
 enum class PowerAction(val cliArgument: String, val ipmiControl: ChassisControl) {
     ON("on", ChassisControl.POWER_UP),
@@ -79,6 +83,13 @@ class ControlSessionController(private var host: SshHost) {
     private val _overallHealth = MutableStateFlow(HealthLevel.UNKNOWN)
     val overallHealth: StateFlow<HealthLevel> = _overallHealth
 
+    /** Chassis locator LED; only IPMI reports it, so it stays false on the SSH path. */
+    private val _identifyOn = MutableStateFlow(false)
+    val identifyOn: StateFlow<Boolean> = _identifyOn
+
+    private val _indicator = MutableStateFlow(HostIndicator.UNKNOWN)
+    val indicator: StateFlow<HostIndicator> = _indicator
+
     private val _powerActionInProgress = MutableStateFlow(false)
     val powerActionInProgress: StateFlow<Boolean> = _powerActionInProgress
 
@@ -90,6 +101,15 @@ class ControlSessionController(private var host: SshHost) {
 
     private val _hardwareLoading = MutableStateFlow(false)
     val hardwareLoading: StateFlow<Boolean> = _hardwareLoading
+
+    /**
+     * What the current long operation is doing. A full hardware scan runs one CLI command per
+     * component against a slow BMC, so a bare spinner gives no sense of whether anything is
+     * happening or how much is left.
+     */
+    val progress: StateFlow<String?> = ConnectionProgress.flowFor(host.id)
+
+    private fun report(message: String?) = ConnectionProgress.report(host.id, message)
 
     var hardwareLoaded: Boolean = false
         private set
@@ -124,7 +144,9 @@ class ControlSessionController(private var host: SshHost) {
                 client.connect(host)
                 _connectionState.value = ConnectionState.CONNECTED
                 _dashboardState.value = ConnectionState.CONNECTED
+                report("Récupération de l'état d'alimentation…")
                 refreshDashboard()
+                report(null)
             } catch (e: Exception) {
                 _errorMessage.value = e.message ?: "Connexion impossible"
                 _connectionState.value = ConnectionState.ERROR
@@ -139,7 +161,9 @@ class ControlSessionController(private var host: SshHost) {
         _errorMessage.value = null
         scope.launch {
             try {
+                report("Session IPMI…")
                 refreshDashboardOverIpmi()
+                report(null)
                 _dashboardState.value = ConnectionState.CONNECTED
             } catch (e: Exception) {
                 _errorMessage.value = e.message ?: "Connexion IPMI impossible"
@@ -160,6 +184,7 @@ class ControlSessionController(private var host: SshHost) {
             try {
                 client.connect(host)
                 _connectionState.value = ConnectionState.CONNECTED
+                report(null)
             } catch (e: Exception) {
                 _errorMessage.value = e.message ?: "Connexion impossible"
                 _connectionState.value = ConnectionState.ERROR
@@ -167,9 +192,12 @@ class ControlSessionController(private var host: SshHost) {
         }
     }
 
-    /** True when this host is configured to drive the power dashboard over IPMI instead of SSH. */
+    /**
+     * True when this host is configured to drive the power dashboard over IPMI instead of SSH.
+     * A tunnel that cannot carry UDP rules IPMI out entirely, however it is configured.
+     */
     val usesIpmi: Boolean
-        get() = host.ipmiEnabled && host.password.isNotBlank()
+        get() = host.ipmiEnabled && host.password.isNotBlank() && HostTunnelManager.supportsUdp(host)
 
     fun refreshDashboard() {
         if (_dashboardRefreshing.value) return
@@ -201,13 +229,20 @@ class ControlSessionController(private var host: SshHost) {
             ChassisPowerState.OFF -> PowerState.OFF
             ChassisPowerState.UNKNOWN -> PowerState.UNKNOWN
         }
-        _overallHealth.value = if (status.hasFault) HealthLevel.DEGRADED else HealthLevel.OK
+        _overallHealth.value = when {
+            status.hasCriticalFault -> HealthLevel.CRITICAL
+            status.hasFault -> HealthLevel.DEGRADED
+            else -> HealthLevel.OK
+        }
+        _identifyOn.value = status.identifyOn
+        _indicator.value = HostIndicator.from(status)
     }
 
     private suspend fun refreshDashboardOverSsh() {
         _powerState.value = IloCliParser.parsePowerState(client.runCommand("power"))
         val components = QUICK_SCAN_CATEGORIES.flatMap { category -> fetchCategory(category) }
         _overallHealth.value = IloCliParser.overallHealth(components.map { it.health })
+        _indicator.value = HostIndicator.from(_powerState.value, _overallHealth.value)
     }
 
     fun performPowerAction(action: PowerAction) {
@@ -234,13 +269,46 @@ class ControlSessionController(private var host: SshHost) {
     }
 
     /**
+     * Switches the chassis locator LED.
+     *
+     * Both paths can *set* it — the CLI through start/stop on /system1/led1, verified against real
+     * hardware by watching IPMI's identify bits change. Only IPMI can *read* it back, though:
+     * /system1/led1 reports "enabledstate=enabled" whether the LED is lit or not, so over SSH the
+     * caller must say which state it wants rather than toggling a state the app cannot observe.
+     */
+    fun setIdentify(on: Boolean) {
+        if (_powerActionInProgress.value) return
+        _powerActionInProgress.value = true
+        scope.launch {
+            try {
+                if (usesIpmi) {
+                    withIpmi { it.setIdentify(on) }
+                    refreshDashboardOverIpmi()
+                } else {
+                    client.runCommand(if (on) "start /system1/led1" else "stop /system1/led1")
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = e.message ?: "Échec de la commande UID"
+            } finally {
+                _powerActionInProgress.value = false
+            }
+        }
+    }
+
+    /** True when the LED state can be read back, which only IPMI offers. */
+    val canReadIdentify: Boolean get() = usesIpmi
+
+    /**
      * Opens a fresh IPMI session per call (there is no long-lived state worth keeping) and runs
      * [block]. Failures propagate rather than silently falling back to SSH: the host was
      * explicitly configured for IPMI, so quietly reverting to the slow path would hide a broken
      * configuration behind the very latency IPMI was enabled to avoid.
      */
     private fun <T> withIpmi(block: (IpmiLanClient) -> T): T {
-        val ipmi = IpmiLanClient(host.hostname, host.ipmiPort, host.username, host.password)
+        // IPMI is UDP, so it only reaches the host through a tunnel that carries UDP — WireGuard
+        // does, an SSH jump host does not (which is why usesIpmi rules that case out entirely).
+        val endpoint = HostTunnelManager.endpointFor(host, host.ipmiPort, udp = true)
+        val ipmi = IpmiLanClient(endpoint.host, endpoint.port, host.username, host.password)
         return try {
             ipmi.open()
             block(ipmi)
@@ -249,16 +317,28 @@ class ControlSessionController(private var host: SshHost) {
         }
     }
 
+    /** True when the hardware tab reads IPMI sensors instead of walking the CLI tree. */
+    val hardwareUsesIpmi: Boolean
+        get() = host.hardwareOverIpmi && usesIpmi
+
     fun loadHardwareIfNeeded(force: Boolean = false) {
         if (_hardwareLoading.value) return
         if (hardwareLoaded && !force) return
         _hardwareLoading.value = true
         scope.launch {
             try {
+                if (hardwareUsesIpmi) {
+                    loadHardwareOverIpmi()
+                    return@launch
+                }
                 withTimeout(HARDWARE_SCAN_TIMEOUT_MS) {
+                    report("Inventaire des composants…")
                     val rootTargets = IloCliParser.parseTargets(client.runCommand("show /system1"))
                     val components = mutableListOf<HardwareComponent>()
+                    var scanned = 0
                     for (target in rootTargets) {
+                        scanned++
+                        report("Lecture de $target ($scanned/${rootTargets.size})…")
                         if (IloCliParser.categoryOf(target) in SKIPPED_HARDWARE_CATEGORIES) continue
                         try {
                             if (IloCliParser.categoryOf(target) == "drives") {
@@ -288,9 +368,62 @@ class ControlSessionController(private var host: SshHost) {
                 _errorMessage.value = e.message ?: "Échec du chargement du matériel"
             } finally {
                 _hardwareLoading.value = false
+                report(null)
             }
         }
     }
+
+    /**
+     * Builds the hardware list from IPMI sensors.
+     *
+     * The sensor repository describes the sensors and never changes unless the hardware does, so
+     * it is read once per session and reused; refreshing then only re-reads the values, which
+     * takes a couple of hundred milliseconds for the whole machine.
+     */
+    private fun loadHardwareOverIpmi() {
+        withIpmi { client ->
+            val reader = IpmiSensorReader(client)
+            val entries = cachedSdr ?: reader.readRepository { scanned, total ->
+                report("Lecture du répertoire de capteurs ($scanned/$total)…")
+            }.also { cachedSdr = it }
+
+            report("Lecture des capteurs…")
+            val components = entries.mapNotNull { entry ->
+                reader.readSensor(entry)?.let { sensor ->
+                    HardwareComponent(
+                        path = "ipmi/sensor/${sensor.number}",
+                        category = categoryForSensorType(sensor.sensorType),
+                        label = sensor.name,
+                        health = when (sensor.health) {
+                            SensorHealth.OK -> HealthLevel.OK
+                            SensorHealth.DEGRADED -> HealthLevel.DEGRADED
+                            SensorHealth.CRITICAL -> HealthLevel.CRITICAL
+                            SensorHealth.UNAVAILABLE -> HealthLevel.UNKNOWN
+                        },
+                        properties = linkedMapOf(
+                            "HealthState" to sensor.health.name,
+                            "Mesure" to sensor.reading,
+                        ),
+                    )
+                }
+            }
+            _hardware.value = components
+            hardwareLoaded = true
+        }
+    }
+
+    /** Maps IPMI sensor types onto the categories the hardware tab already groups by. */
+    private fun categoryForSensorType(type: Int): String = when (type) {
+        0x01 -> "sensor"
+        0x04 -> "fan"
+        0x07 -> "cpu"
+        0x08, 0x09 -> "powersupply"
+        0x0C -> "memory"
+        0x0D -> "drives"
+        else -> "other"
+    }
+
+    private var cachedSdr: List<SdrEntry>? = null
 
     private suspend fun fetchCategory(category: String): List<HardwareComponent> {
         val rootTargets = IloCliParser.parseTargets(client.runCommand("show /system1"))
@@ -401,6 +534,8 @@ class ControlSessionController(private var host: SshHost) {
     }
 
     fun disconnect() {
+        cachedSdr = null
+        _indicator.value = HostIndicator.UNKNOWN
         client.disconnect()
         _connectionState.value = ConnectionState.DISCONNECTED
         _dashboardState.value = ConnectionState.DISCONNECTED

@@ -25,18 +25,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import net.raphaelgf11.ilo3manager.data.HostNotificationSettings
 import net.raphaelgf11.ilo3manager.data.NotificationSettingsRepository
 
 private val INTERVAL_OPTIONS_MINUTES = listOf(15, 30, 60, 120)
-private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 4242
-
-private fun Context.findActivity(): Activity? = when (this) {
-    is Activity -> this
-    is ContextWrapper -> baseContext.findActivity()
-    else -> null
-}
 
 @Composable
 fun NotificationSettingsDialog(
@@ -48,24 +43,16 @@ fun NotificationSettingsDialog(
     val context = LocalContext.current
     var settings by remember { mutableStateOf(repository.settingsFor(hostId)) }
 
-    // Requesting the permission via Compose's rememberLauncherForActivityResult crashes here:
-    // MainActivity is a FragmentActivity (required for BiometricPrompt), and FragmentActivity
-    // requires requestCode to fit in 16 bits, but the Compose launcher assigns a random 32-bit
-    // one. Requesting directly with a fixed, small request code sidesteps that entirely; the
-    // result isn't needed back since NotificationHelper already checks the permission before
-    // posting anything.
+    // The result isn't needed back: NotificationHelper re-checks the permission before posting.
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { }
+
     fun requestEnable() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
                 PackageManager.PERMISSION_GRANTED
-            val activity = context.findActivity()
-            if (!granted && activity != null) {
-                ActivityCompat.requestPermissions(
-                    activity,
-                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                    NOTIFICATION_PERMISSION_REQUEST_CODE,
-                )
-            }
+            if (!granted) permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 

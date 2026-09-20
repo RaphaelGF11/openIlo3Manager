@@ -27,6 +27,9 @@ private const val NET_FN_APP = 0x06
 
 private const val PRIVILEGE_ADMINISTRATOR: Byte = 0x04
 
+/** Retransmissions before giving up on a datagram. */
+private const val RETRY_ATTEMPTS = 3
+
 enum class ChassisPowerState { ON, OFF, UNKNOWN }
 
 /** Decoded Get Chassis Status reply: power state plus the chassis-level fault indicators. */
@@ -37,9 +40,19 @@ data class ChassisStatus(
     val powerControlFault: Boolean = false,
     val driveFault: Boolean = false,
     val coolingFault: Boolean = false,
+    /** The blue locator LED on the chassis front and rear. */
+    val identifyOn: Boolean = false,
 ) {
     val hasFault: Boolean
         get() = powerOverload || mainPowerFault || powerControlFault || driveFault || coolingFault
+
+    /**
+     * Faults that put the machine itself at risk, as opposed to a degraded but running state: a
+     * power fault means the server may stop, whereas a failed drive in an array or one dead fan
+     * usually does not.
+     */
+    val hasCriticalFault: Boolean
+        get() = powerOverload || mainPowerFault || powerControlFault
 }
 
 enum class ChassisControl(val code: Int) {
@@ -81,7 +94,7 @@ class IpmiLanClient(
 
     fun open() {
         address = InetAddress.getByName(host)
-        socket = DatagramSocket().apply { soTimeout = 4_000 }
+        socket = DatagramSocket().apply { soTimeout = 2_500 }
 
         consoleSessionId = random.nextInt().let { if (it == 0) 1 else it }
         val consoleRandom = ByteArray(16).also { random.nextBytes(it) }
@@ -155,12 +168,28 @@ class IpmiLanClient(
             powerControlFault = currentPower and 0x10 != 0,
             driveFault = misc and 0x04 != 0,
             coolingFault = misc and 0x08 != 0,
+            // Bits 5:4 hold the identify state: 0 off, 1 on temporarily, 2 on indefinitely.
+            identifyOn = (misc shr 4) and 0x03 != 0,
         )
+    }
+
+    /**
+     * Turns the chassis locator LED on indefinitely or off (Chassis Identify).
+     *
+     * "On" passes the maximum interval together with the "force identify on" flag, because the
+     * plain interval form would switch itself off again after at most 255 seconds.
+     */
+    fun setIdentify(on: Boolean) {
+        val data = if (on) byteArrayOf(0xFF.toByte(), 0x01) else byteArrayOf(0x00)
+        sendCommand(netFn = NET_FN_CHASSIS, cmd = 0x04, data = data)
     }
 
     fun chassisControl(action: ChassisControl) {
         sendCommand(netFn = NET_FN_CHASSIS, cmd = 0x02, data = byteArrayOf(action.code.toByte()))
     }
+
+    /** Issues an arbitrary command; used by [IpmiSensorReader] for the storage and sensor net functions. */
+    fun rawCommand(netFn: Int, cmd: Int, data: ByteArray): ByteArray = sendCommand(netFn, cmd, data)
 
     fun close() {
         runCatching {
@@ -186,11 +215,11 @@ class IpmiLanClient(
         val ipmiMessage = byteArrayOf(rsAddr.toByte(), netFnLun.toByte(), checksum1) + body + byteArrayOf(checksum2)
 
         val packet = buildSessionPacket(ipmiMessage)
-        send(packet)
-        if (!expectResponse) return ByteArray(0)
-
-        val respPacket = receive()
-        return parseIpmiResponsePayload(respPacket)
+        if (!expectResponse) {
+            send(packet)
+            return ByteArray(0)
+        }
+        return parseIpmiResponsePayload(sendAndReceive(packet))
     }
 
     private fun buildSessionPacket(ipmiMessage: ByteArray): ByteArray {
@@ -292,9 +321,27 @@ class IpmiLanClient(
 
     // ---- Transport ----
 
-    private fun exchangePreSession(request: ByteArray): ByteArray {
-        send(request)
-        return receive()
+    private fun exchangePreSession(request: ByteArray): ByteArray = sendAndReceive(request)
+
+    /**
+     * Sends a datagram and waits for the reply, retransmitting if none arrives.
+     *
+     * IPMI runs over UDP with no delivery guarantee, so a lost request simply produces silence.
+     * It also matters through a WireGuard tunnel: WireGuard negotiates its handshake only when it
+     * first has something to send, and the packet that triggers it is dropped — without a retry
+     * the very first IPMI exchange after connecting always failed.
+     */
+    private fun sendAndReceive(request: ByteArray): ByteArray {
+        var lastError: Exception? = null
+        repeat(RETRY_ATTEMPTS) {
+            try {
+                send(request)
+                return receive()
+            } catch (e: java.net.SocketTimeoutException) {
+                lastError = e
+            }
+        }
+        throw lastError ?: IOException("Aucune réponse IPMI")
     }
 
     private fun send(data: ByteArray) {

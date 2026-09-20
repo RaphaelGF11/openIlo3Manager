@@ -39,6 +39,7 @@ fun ConsoleTab(controller: ControlSessionController) {
     val connectionState by controller.connectionState.collectAsStateWithLifecycle()
     val transcript by controller.consoleTranscript.collectAsStateWithLifecycle()
     val busy by controller.consoleBusy.collectAsStateWithLifecycle()
+    val progress by controller.progress.collectAsStateWithLifecycle()
     var command by remember { mutableStateOf("") }
     val scrollState = rememberScrollState()
 
@@ -55,7 +56,7 @@ fun ConsoleTab(controller: ControlSessionController) {
     if (connectionState != ConnectionState.CONNECTED) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             when (connectionState) {
-                ConnectionState.CONNECTING -> Text("Connexion SSH en cours…")
+                ConnectionState.CONNECTING -> Text(progress ?: "Connexion SSH en cours…")
                 else -> Button(onClick = { controller.ensureSshConnected() }) {
                     Text("Se connecter en SSH")
                 }

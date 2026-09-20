@@ -2,6 +2,8 @@ package net.raphaelgf11.ilo3manager.webgateway
 
 import fi.iki.elonen.NanoHTTPD
 import net.raphaelgf11.ilo3manager.data.SshHost
+import net.raphaelgf11.ilo3manager.vpn.Endpoint
+import net.raphaelgf11.ilo3manager.vpn.HostTunnelManager
 import java.security.KeyStore
 import javax.net.ssl.KeyManagerFactory
 
@@ -33,6 +35,10 @@ class IloHttpProxyServer(
     }
 
     private val staticCache = StaticResourceCache()
+
+    /** Address to dial for iLO's HTTPS port, translated when the host goes through a tunnel. */
+    private val tlsEndpoint: Endpoint
+        get() = HostTunnelManager.endpointFor(host, host.httpsPort)
 
     override fun serve(session: IHTTPSession): Response {
         return try {
@@ -72,13 +78,13 @@ class IloHttpProxyServer(
         // that failure is indistinguishable from a real one until the write/read fails, so retry
         // once on a guaranteed-fresh connection. A freshly created connection failing is a real
         // error and is not retried.
-        val pooled = LegacyTlsConnectionPool.acquire(host.hostname, host.httpsPort)
+        val pooled = LegacyTlsConnectionPool.acquire(tlsEndpoint.host, tlsEndpoint.port)
         val parsed = try {
             exchange(pooled.connection, requestBytes)
         } catch (e: Exception) {
             LegacyTlsConnectionPool.discard(pooled.connection)
             if (!pooled.fromPool) throw e
-            val fresh = LegacyTlsConnectionPool.acquire(host.hostname, host.httpsPort)
+            val fresh = LegacyTlsConnectionPool.acquire(tlsEndpoint.host, tlsEndpoint.port)
             try {
                 exchange(fresh.connection, requestBytes)
             } catch (retry: Exception) {
@@ -107,7 +113,7 @@ class IloHttpProxyServer(
             parsed.headers["transfer-encoding"]?.contains("chunked", ignoreCase = true) == true
         val serverClosing = parsed.headers["connection"]?.contains("close", ignoreCase = true) == true
         if (explicitlyFramed && !serverClosing) {
-            LegacyTlsConnectionPool.release(host.hostname, host.httpsPort, connection)
+            LegacyTlsConnectionPool.release(tlsEndpoint.host, tlsEndpoint.port, connection)
         } else {
             LegacyTlsConnectionPool.discard(connection)
         }

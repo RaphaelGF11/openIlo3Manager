@@ -72,6 +72,7 @@ fun AppNavGraph(
         composable(ROUTE_SETTINGS) {
             SettingsScreen(
                 repository = settingsRepository,
+                hostRepository = repository,
                 onBack = { navController.popBackStack() },
             )
         }

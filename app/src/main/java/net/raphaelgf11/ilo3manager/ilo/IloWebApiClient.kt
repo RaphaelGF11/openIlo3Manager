@@ -1,6 +1,7 @@
 package net.raphaelgf11.ilo3manager.ilo
 
 import net.raphaelgf11.ilo3manager.data.SshHost
+import net.raphaelgf11.ilo3manager.vpn.HostTunnelManager
 import net.raphaelgf11.ilo3manager.webgateway.LegacyTlsHttpClient
 import net.raphaelgf11.ilo3manager.webgateway.RawHttpResponseReader
 import org.json.JSONObject
@@ -56,7 +57,8 @@ class IloWebApiClient(private val host: SshHost) {
     }
 
     private fun request(method: String, path: String, sessionKey: String?, body: String?): String {
-        LegacyTlsHttpClient.connect(host.hostname, host.httpsPort).use { connection ->
+        val endpoint = HostTunnelManager.endpointFor(host, host.httpsPort)
+        LegacyTlsHttpClient.connect(endpoint.host, endpoint.port).use { connection ->
             val payload = body?.toByteArray(Charsets.UTF_8) ?: ByteArray(0)
             val head = StringBuilder()
             // No query string: iLO3 cannot parse a request body when the request line carries one.

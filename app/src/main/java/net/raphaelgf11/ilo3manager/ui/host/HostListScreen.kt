@@ -32,12 +32,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,7 +56,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import net.raphaelgf11.ilo3manager.data.NotificationSettingsRepository
 import net.raphaelgf11.ilo3manager.data.SshHost
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.withContext
+import net.raphaelgf11.ilo3manager.ilo.HostIndicator
+import net.raphaelgf11.ilo3manager.ilo.HostStateProbe
+import net.raphaelgf11.ilo3manager.ssh.ConnectionState
 import net.raphaelgf11.ilo3manager.ssh.HostSessionStore
+import net.raphaelgf11.ilo3manager.webgateway.WebGatewayManager
+import net.raphaelgf11.ilo3manager.ui.dashboard.StatusDot
 import net.raphaelgf11.ilo3manager.ui.notifications.NotificationSettingsDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,6 +80,12 @@ fun HostListScreen(
     onEditHost: (SshHost) -> Unit,
     onOpenSettings: () -> Unit,
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    var refreshing by remember { mutableStateOf(false) }
+    // Bumped on each pull, which restarts every row's polling effect so states are re-read now
+    // rather than at the end of their normal interval.
+    var refreshTick by remember { mutableIntStateOf(0) }
     val hosts by viewModel.hosts.collectAsState()
     var editMode by remember { mutableStateOf(false) }
     var notificationDialogHost by remember { mutableStateOf<SshHost?>(null) }
@@ -112,10 +132,25 @@ fun HostListScreen(
                 Text("Aucun hôte enregistré. Appuyez sur + pour en ajouter un.")
             }
         } else {
-            LazyColumn(
+            // Pull to refresh: re-reads the stored hosts and lets each row's poller take a fresh
+            // reading, the same gesture a browser uses for the same intent.
+            PullToRefreshBox(
+                isRefreshing = refreshing,
+                onRefresh = {
+                    refreshing = true
+                    viewModel.refresh()
+                    refreshTick++
+                    scope.launch {
+                        delay(600)
+                        refreshing = false
+                    }
+                },
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
+            ) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
@@ -124,6 +159,7 @@ fun HostListScreen(
                     val isDragging = draggingId == host.id
                     HostRow(
                         host = host,
+                        refreshTick = refreshTick,
                         editMode = editMode,
                         isDragging = isDragging,
                         offsetY = if (isDragging) dragAccumulated else 0f,
@@ -158,10 +194,11 @@ fun HostListScreen(
                         onClick = { if (!editMode) onOpenHost(host) },
                         onEdit = { onEditHost(host) },
                         onDelete = { viewModel.deleteHost(host.id) },
-                        onDisconnect = { viewModel.disconnectHost(host.id) },
+                        onDisconnect = { viewModel.disconnectHost(context, host.id) },
                         onOpenNotificationSettings = { notificationDialogHost = host },
                     )
                 }
+            }
             }
         }
     }
@@ -176,9 +213,13 @@ fun HostListScreen(
     }
 }
 
+/** Slow enough not to hammer several BMCs, fast enough to notice a machine going down. */
+private const val LIST_POLL_INTERVAL_MS = 30_000L
+
 @Composable
 private fun HostRow(
     host: SshHost,
+    refreshTick: Int,
     editMode: Boolean,
     isDragging: Boolean,
     offsetY: Float,
@@ -192,7 +233,49 @@ private fun HostRow(
     onDisconnect: () -> Unit,
     onOpenNotificationSettings: () -> Unit,
 ) {
-    val active by HostSessionStore.activeFlow(host.id).collectAsState(initial = false)
+    // Re-read the store whenever a session appears or disappears: holding the first lookup meant
+    // a row composed before the session existed never reflected it.
+    val revision by HostSessionStore.revision.collectAsState()
+    val controlSession = remember(host.id, revision) { HostSessionStore.existingControlSessionFor(host.id) }
+    val noSession = remember { MutableStateFlow(ConnectionState.DISCONNECTED) }
+    val unknownIndicator = remember { MutableStateFlow(HostIndicator.UNKNOWN) }
+    val sessionState by (controlSession?.connectionState ?: noSession).collectAsState()
+    val dashboardStateValue by (controlSession?.dashboardState ?: noSession).collectAsState()
+    val liveIndicator by (controlSession?.indicator ?: unknownIndicator).collectAsState()
+
+    val runningGateways by WebGatewayManager.runningHostIds.collectAsState()
+    // A running gateway keeps a foreground service and a listening port open, so the host is just
+    // as "in use" as one with an SSH session — and the X that stops it must stay reachable.
+    val sessionActive = sessionState == ConnectionState.CONNECTED || dashboardStateValue == ConnectionState.CONNECTED
+    val active = sessionActive || sessionState == ConnectionState.CONNECTING ||
+        dashboardStateValue == ConnectionState.CONNECTING || host.id in runningGateways
+    val retrieving = sessionState == ConnectionState.CONNECTING ||
+        dashboardStateValue == ConnectionState.CONNECTING
+
+    var polledIndicator by remember(host.id) { mutableStateOf(HostIndicator.UNKNOWN) }
+    // A probe opens an IPMI session and reads the chassis, which takes a moment; showing that it
+    // is under way distinguishes "still asking" from "asked, and the answer is unknown".
+    var probing by remember(host.id) { mutableStateOf(false) }
+    LaunchedEffect(host.id, host.showStateInList, host.ipmiEnabled, refreshTick) {
+        if (!HostStateProbe.isPollable(host)) return@LaunchedEffect
+        while (true) {
+            probing = true
+            polledIndicator = withContext(Dispatchers.IO) { HostStateProbe.probe(host) }
+            probing = false
+            delay(LIST_POLL_INTERVAL_MS)
+        }
+    }
+
+    // Yellow covers every "we are finding out" case. A session being open says nothing about the
+    // machine's power state, so it must not show green: until a state has actually been read the
+    // honest answer is still "retrieving".
+    val indicator = when {
+        retrieving || probing -> HostIndicator.CONNECTING
+        liveIndicator != HostIndicator.UNKNOWN -> liveIndicator
+        sessionActive -> HostIndicator.CONNECTING
+        else -> polledIndicator
+    }
+
 
     Card(
         modifier = Modifier
@@ -226,20 +309,16 @@ private fun HostRow(
                     },
                 )
                 androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(start = 8.dp))
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(10.dp)
-                        .background(
-                            color = if (active) Color(0xFF3DDC84) else Color(0xFF9E9E9E),
-                            shape = CircleShape,
-                        ),
-                )
-                androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(start = 6.dp))
             }
 
+            // The dot sits on the name line rather than beside the whole block, so it never
+            // shifts the "user@host" line underneath it.
             Column(modifier = Modifier.weight(1f)) {
-                Text(host.name, style = MaterialTheme.typography.titleMedium)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    StatusDot(indicator = indicator)
+                    androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(start = 6.dp))
+                    Text(host.name, style = MaterialTheme.typography.titleMedium)
+                }
                 Text("${host.username}@${host.hostname}:${host.port}")
             }
 

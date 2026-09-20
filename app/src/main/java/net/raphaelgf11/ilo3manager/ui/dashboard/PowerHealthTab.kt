@@ -39,6 +39,9 @@ fun PowerHealthTab(controller: ControlSessionController, settingsRepository: Set
     val error by controller.errorMessage.collectAsStateWithLifecycle()
     val powerState by controller.powerState.collectAsStateWithLifecycle()
     val health by controller.overallHealth.collectAsStateWithLifecycle()
+    val indicator by controller.indicator.collectAsStateWithLifecycle()
+    val identifyOn by controller.identifyOn.collectAsStateWithLifecycle()
+    val progress by controller.progress.collectAsStateWithLifecycle()
     val actionInProgress by controller.powerActionInProgress.collectAsStateWithLifecycle()
     val refreshing by controller.dashboardRefreshing.collectAsStateWithLifecycle()
     var pendingAction by remember { mutableStateOf<PowerAction?>(null) }
@@ -75,7 +78,7 @@ fun PowerHealthTab(controller: ControlSessionController, settingsRepository: Set
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 CircularProgressIndicator()
-                Text("Connexion en cours…")
+                Text(progress ?: "Connexion en cours…")
             }
             ConnectionState.ERROR, ConnectionState.DISCONNECTED -> {
                 Text(error ?: "Non connecté")
@@ -85,7 +88,7 @@ fun PowerHealthTab(controller: ControlSessionController, settingsRepository: Set
             }
             ConnectionState.CONNECTED -> {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    HealthLed(health = health)
+                    StatusDot(indicator = indicator, size = 16.dp)
                     Text(
                         text = when (health) {
                             HealthLevel.OK -> "État général : normal"
@@ -141,6 +144,38 @@ fun PowerHealthTab(controller: ControlSessionController, settingsRepository: Set
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text("Forcer l'arrêt")
+                    }
+                    if (controller.canReadIdentify) {
+                        // The state is readable, so one button that reflects it is honest.
+                        OutlinedButton(
+                            onClick = { controller.setIdentify(!identifyOn) },
+                            enabled = !actionInProgress,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(if (identifyOn) "Éteindre la LED UID" else "Allumer la LED UID")
+                        }
+                    } else {
+                        // Over SSH the LED can be set but not read, so a single toggle would have
+                        // to guess which way it is pointing; two explicit actions cannot be wrong.
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            OutlinedButton(
+                                onClick = { controller.setIdentify(true) },
+                                enabled = !actionInProgress,
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Text("LED UID allumée")
+                            }
+                            OutlinedButton(
+                                onClick = { controller.setIdentify(false) },
+                                enabled = !actionInProgress,
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Text("LED UID éteinte")
+                            }
+                        }
                     }
                     OutlinedButton(
                         onClick = { controller.refreshDashboard() },

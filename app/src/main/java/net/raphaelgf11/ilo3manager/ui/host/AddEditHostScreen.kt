@@ -47,15 +47,20 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import net.raphaelgf11.ilo3manager.data.AuthMethod
 import net.raphaelgf11.ilo3manager.data.HostRepository
 import net.raphaelgf11.ilo3manager.data.SshHost
+import net.raphaelgf11.ilo3manager.data.VpnType
+import net.raphaelgf11.ilo3manager.vpn.SshTunnelConfig
+import net.raphaelgf11.ilo3manager.vpn.WireGuardConfigParser
 import net.raphaelgf11.ilo3manager.ssh.HostSessionStore
 import net.raphaelgf11.ilo3manager.ssh.SshKeyGenerator
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
-private val TAB_TITLES = listOf("Général", "Authentification", "IPMI")
+private val TAB_TITLES = listOf("Général", "Authentification", "IPMI", "VPN")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,6 +89,27 @@ fun AddEditHostScreen(
     var publicKey by remember { mutableStateOf("") }
     var ipmiEnabled by remember { mutableStateOf(existingHost?.ipmiEnabled ?: false) }
     var ipmiPort by remember { mutableStateOf((existingHost?.ipmiPort ?: 623).toString()) }
+    var showStateInList by remember { mutableStateOf(existingHost?.showStateInList ?: false) }
+    var hardwareOverIpmi by remember { mutableStateOf(existingHost?.hardwareOverIpmi ?: false) }
+    var vpnType by remember { mutableStateOf(existingHost?.vpnType ?: VpnType.NONE) }
+    var wireGuardConfig by remember { mutableStateOf(existingHost?.wireGuardConfig ?: "") }
+    var sshTunnelConfig by remember { mutableStateOf(existingHost?.sshTunnelConfig ?: "") }
+
+    // A WireGuard QR code encodes the .conf text verbatim, so a scan feeds the same parser as a
+    // pasted or imported configuration.
+    val qrScanner = rememberLauncherForActivityResult(ScanContract()) { result ->
+        result.contents?.let { wireGuardConfig = it }
+    }
+
+    val vpnFilePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+    ) { uri: Uri? ->
+        uri?.let {
+            context.contentResolver.openInputStream(it)?.use { stream ->
+                wireGuardConfig = BufferedReader(InputStreamReader(stream)).readText()
+            }
+        }
+    }
 
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
@@ -127,6 +153,12 @@ fun AddEditHostScreen(
                             publicKey = if (keyChanged) publicKey else existingHost?.publicKey ?: "",
                             ipmiEnabled = ipmiEnabled,
                             ipmiPort = ipmiPort.toIntOrNull() ?: 623,
+                            ipmiPromptDismissed = existingHost?.ipmiPromptDismissed ?: false,
+                            showStateInList = showStateInList && ipmiEnabled,
+                            hardwareOverIpmi = hardwareOverIpmi && ipmiEnabled,
+                            vpnType = vpnType,
+                            wireGuardConfig = wireGuardConfig,
+                            sshTunnelConfig = sshTunnelConfig,
                         )
                         repository.saveHost(host)
                         // A session for this host may already be running with the previous record;
@@ -202,9 +234,28 @@ fun AddEditHostScreen(
                             }
                         },
                     )
+                    3 -> VpnTab(
+                        type = vpnType,
+                        onTypeChange = { vpnType = it },
+                        wireGuardConfig = wireGuardConfig,
+                        onWireGuardConfigChange = { wireGuardConfig = it },
+                        sshTunnelConfig = sshTunnelConfig,
+                        onSshTunnelConfigChange = { sshTunnelConfig = it },
+                        onImportFile = { vpnFilePicker.launch("*/*") },
+                        onScanQrCode = { qrScanner.launch(ScanOptions().apply {
+                            setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                            setPrompt("Scannez le QR code WireGuard")
+                            setBeepEnabled(false)
+                            setCaptureActivity(PortraitCaptureActivity::class.java)
+                        }) },
+                    )
                     2 -> IpmiTab(
                         enabled = ipmiEnabled,
                         onEnabledChange = { ipmiEnabled = it },
+                        showStateInList = showStateInList,
+                        onShowStateInListChange = { showStateInList = it },
+                        hardwareOverIpmi = hardwareOverIpmi,
+                        onHardwareOverIpmiChange = { hardwareOverIpmi = it },
                         port = ipmiPort,
                         onPortChange = { ipmiPort = it },
                         authMethod = authMethod,
@@ -377,6 +428,10 @@ private fun AuthenticationTab(
 private fun IpmiTab(
     enabled: Boolean,
     onEnabledChange: (Boolean) -> Unit,
+    showStateInList: Boolean,
+    onShowStateInListChange: (Boolean) -> Unit,
+    hardwareOverIpmi: Boolean,
+    onHardwareOverIpmiChange: (Boolean) -> Unit,
     port: String,
     onPortChange: (String) -> Unit,
     authMethod: AuthMethod,
@@ -406,6 +461,42 @@ private fun IpmiTab(
     }
 
     if (enabled) {
+        Spacer()
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                Text("Afficher l'état dans la liste")
+                Text(
+                    "La liste des serveurs interroge alors cet hôte périodiquement pour y afficher " +
+                        "son alimentation et ses défauts. Réservé à IPMI : une connexion SSH par " +
+                        "hôte serait bien trop lente et saturerait les sessions de l'iLO.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Switch(checked = showStateInList, onCheckedChange = onShowStateInListChange)
+        }
+        Spacer()
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                Text("Onglet HW via IPMI")
+                Text(
+                    "L'onglet Matériel lit alors les capteurs IPMI au lieu de parcourir l'arborescence " +
+                        "CLI : quelques secondes au lieu d'une quinzaine, et aucune session SSH. " +
+                        "En contrepartie il affiche des capteurs (températures, ventilateurs, " +
+                        "alimentations) et non l'inventaire : ni détail par barrette mémoire ou par " +
+                        "processeur, ni numéros de série.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Switch(checked = hardwareOverIpmi, onCheckedChange = onHardwareOverIpmiChange)
+        }
         Spacer()
         OutlinedTextField(
             value = port,
@@ -437,4 +528,143 @@ private fun IpmiTab(
 @Composable
 private fun Spacer() {
     androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(top = 4.dp))
+}
+
+@Composable
+private fun VpnTab(
+    type: VpnType,
+    onTypeChange: (VpnType) -> Unit,
+    wireGuardConfig: String,
+    onWireGuardConfigChange: (String) -> Unit,
+    sshTunnelConfig: String,
+    onSshTunnelConfigChange: (String) -> Unit,
+    onImportFile: () -> Unit,
+    onScanQrCode: () -> Unit,
+) {
+    Text("Tunnel")
+    VpnType.entries.forEach { candidate ->
+        Row {
+            RadioButton(selected = type == candidate, onClick = { onTypeChange(candidate) })
+            Text(
+                text = when (candidate) {
+                    VpnType.NONE -> "Aucun (accès direct)"
+                    VpnType.WIREGUARD -> "WireGuard"
+                    VpnType.SSH_TUNNEL -> "Rebond SSH (port forwarding)"
+                },
+                modifier = Modifier.padding(top = 12.dp),
+            )
+        }
+    }
+
+    if (type == VpnType.SSH_TUNNEL) {
+        val tunnel = remember(sshTunnelConfig) { SshTunnelConfig.fromJson(sshTunnelConfig) }
+        fun update(block: SshTunnelConfig.() -> SshTunnelConfig) {
+            onSshTunnelConfigChange(tunnel.block().toJson())
+        }
+
+        Spacer()
+        Text(
+            "Les connexions vers l'iLO sont relayées par cette machine intermédiaire.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Spacer()
+        OutlinedTextField(
+            value = tunnel.host,
+            onValueChange = { v -> update { copy(host = v) } },
+            label = { Text("Hôte de rebond") },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer()
+        OutlinedTextField(
+            value = tunnel.port.toString(),
+            onValueChange = { v -> update { copy(port = v.filter { c -> c.isDigit() }.toIntOrNull() ?: 22) } },
+            label = { Text("Port SSH du rebond") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer()
+        OutlinedTextField(
+            value = tunnel.username,
+            onValueChange = { v -> update { copy(username = v) } },
+            label = { Text("Utilisateur du rebond") },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer()
+        OutlinedTextField(
+            value = tunnel.password,
+            onValueChange = { v -> update { copy(password = v) } },
+            label = { Text("Mot de passe (ou laissez vide et collez une clé)") },
+            visualTransformation = PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer()
+        OutlinedTextField(
+            value = tunnel.privateKey,
+            onValueChange = { v -> update { copy(privateKey = v) } },
+            label = { Text("Clé privée du rebond (optionnel)") },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 3,
+        )
+        Spacer()
+        Text(
+            "Le rebond SSH ne transporte que du TCP. L'onglet Alim ne pourra donc pas utiliser " +
+                "IPMI, qui fonctionne en UDP, et repassera automatiquement par la CLI SSH.",
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+
+    if (type == VpnType.WIREGUARD) {
+        Spacer()
+        Row {
+            OutlinedButton(onClick = onImportFile) {
+                Text("Importer un .conf")
+            }
+            OutlinedButton(onClick = onScanQrCode, modifier = Modifier.padding(start = 8.dp)) {
+                Text("Scanner un QR code")
+            }
+        }
+        Spacer()
+        OutlinedTextField(
+            value = wireGuardConfig,
+            onValueChange = onWireGuardConfigChange,
+            label = { Text("Configuration WireGuard (collez, importez ou scannez)") },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 6,
+        )
+        Spacer()
+
+        // Parse as the user types so a malformed file is caught here rather than at connection
+        // time, and so the summary confirms the app read what the user expected.
+        if (wireGuardConfig.isNotBlank()) {
+            val parsed = runCatching { WireGuardConfigParser.parse(wireGuardConfig) }
+            parsed.fold(
+                onSuccess = { wg ->
+                    Text("Configuration valide", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Pair : ${wg.endpoint}\n" +
+                            "Adresse locale : ${wg.addresses.joinToString(", ")}\n" +
+                            "Réseaux routés : ${wg.allowedIps.joinToString(", ")}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                },
+                onFailure = { error ->
+                    Text(
+                        error.message ?: "Configuration illisible",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                },
+            )
+        }
+
+        Spacer()
+        Text(
+            "Le tunnel n'est pas encore établi par l'application : cette configuration est " +
+                "enregistrée mais pas utilisée. L'acheminement du trafic sera ajouté dans une " +
+                "prochaine version.",
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
 }

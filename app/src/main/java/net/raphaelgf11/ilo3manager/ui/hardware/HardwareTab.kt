@@ -63,24 +63,26 @@ fun HardwareTab(controller: ControlSessionController) {
     val loading by controller.hardwareLoading.collectAsStateWithLifecycle()
     val hardware by controller.hardware.collectAsStateWithLifecycle()
     val error by controller.errorMessage.collectAsStateWithLifecycle()
+    val progress by controller.progress.collectAsStateWithLifecycle()
     var selectedSubTab by remember { mutableIntStateOf(0) }
 
     // The detailed per-component scan is CLI-only, so this tab opens the SSH session itself: the
     // power dashboard no longer does when the host runs over IPMI.
     LaunchedEffect(connectionState) {
-        if (connectionState == ConnectionState.CONNECTED) {
-            controller.loadHardwareIfNeeded()
-        } else {
-            controller.ensureSshConnected()
+        when {
+            // Over IPMI this tab needs no SSH session at all, which is most of the time saved.
+            controller.hardwareUsesIpmi -> controller.loadHardwareIfNeeded()
+            connectionState == ConnectionState.CONNECTED -> controller.loadHardwareIfNeeded()
+            else -> controller.ensureSshConnected()
         }
     }
 
     when {
-        connectionState != ConnectionState.CONNECTED -> {
+        !controller.hardwareUsesIpmi && connectionState != ConnectionState.CONNECTED -> {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     CircularProgressIndicator()
-                    Text("Connexion SSH en cours…")
+                    Text(progress ?: "Connexion SSH en cours…")
                 }
             }
         }
@@ -88,7 +90,7 @@ fun HardwareTab(controller: ControlSessionController) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     CircularProgressIndicator()
-                    Text("Chargement de l'état du matériel…")
+                    Text(progress ?: "Chargement de l'état du matériel…")
                 }
             }
         }

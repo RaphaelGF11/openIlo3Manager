@@ -5,7 +5,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import net.raphaelgf11.ilo3manager.data.HostRepository
 import net.raphaelgf11.ilo3manager.data.SshHost
+import android.content.Context
 import net.raphaelgf11.ilo3manager.ssh.HostSessionStore
+import net.raphaelgf11.ilo3manager.webgateway.WebGatewayManager
 
 class HostListViewModel(private val repository: HostRepository) : ViewModel() {
 
@@ -35,7 +37,13 @@ class HostListViewModel(private val repository: HostRepository) : ViewModel() {
         repository.reorderHosts(reordered)
     }
 
-    fun disconnectHost(id: String) {
+    /**
+     * Ends everything the app holds open for a host, including the web gateway: that runs in a
+     * foreground service, so leaving it behind would keep a notification and an open listening
+     * port after the user asked to disconnect.
+     */
+    fun disconnectHost(context: Context, id: String) {
         HostSessionStore.disconnectAll(id)
+        WebGatewayManager.stop(context, id)
     }
 }

@@ -19,13 +19,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import net.raphaelgf11.ilo3manager.data.HostRepository
 import net.raphaelgf11.ilo3manager.data.SettingsRepository
 
 private val REFRESH_INTERVAL_OPTIONS = listOf(15, 30, 60, 120)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(repository: SettingsRepository, onBack: () -> Unit) {
+fun SettingsScreen(
+    repository: SettingsRepository,
+    hostRepository: HostRepository,
+    onBack: () -> Unit,
+) {
     val settings by repository.settings.collectAsStateWithLifecycle()
 
     Scaffold(
@@ -44,7 +51,8 @@ fun SettingsScreen(repository: SettingsRepository, onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp),
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
         ) {
             Text("Actualisation automatique", style = MaterialTheme.typography.titleMedium)
             Text(
@@ -64,6 +72,8 @@ fun SettingsScreen(repository: SettingsRepository, onBack: () -> Unit) {
                     )
                 }
             }
+
+            DriveSyncSection(hostRepository = hostRepository)
         }
     }
 }
