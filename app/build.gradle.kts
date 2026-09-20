@@ -57,6 +57,8 @@ android {
     }
     buildFeatures {
         compose = true
+        // BuildConfig.VERSION_NAME is what the update check compares against.
+        buildConfig = true
     }
 
     // One APK per architecture rather than a single universal one: the WireGuard tunnel needs a

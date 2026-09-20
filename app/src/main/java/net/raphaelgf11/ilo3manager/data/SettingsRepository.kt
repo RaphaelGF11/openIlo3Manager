@@ -15,6 +15,14 @@ class SettingsRepository(context: Context) {
     )
     val settings: StateFlow<AppSettings> = _settings
 
+    /**
+     * Whether the update dialog may appear at launch. The settings screen keeps checking either
+     * way, so dismissing it hides the prompt without hiding the updates themselves.
+     */
+    var updateDialogEnabled: Boolean
+        get() = prefs.getBoolean(KEY_UPDATE_DIALOG, true)
+        set(value) = prefs.edit().putBoolean(KEY_UPDATE_DIALOG, value).apply()
+
     fun setAutoRefreshSeconds(seconds: Int) {
         prefs.edit().putInt(KEY_AUTO_REFRESH_SECONDS, seconds).apply()
         _settings.value = _settings.value.copy(autoRefreshSeconds = seconds)
@@ -22,5 +30,6 @@ class SettingsRepository(context: Context) {
 
     companion object {
         private const val KEY_AUTO_REFRESH_SECONDS = "auto_refresh_seconds"
+        private const val KEY_UPDATE_DIALOG = "update_dialog_enabled"
     }
 }

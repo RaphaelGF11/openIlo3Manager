@@ -73,6 +73,8 @@ fun SettingsScreen(
                 }
             }
 
+            UpdateSection(settings = repository)
+
             DriveSyncSection(hostRepository = hostRepository)
         }
     }

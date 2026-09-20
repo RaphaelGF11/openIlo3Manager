@@ -31,6 +31,18 @@ En pratique, un APK de *release* ne peut pas remplacer une installation issue d'
 
 Si cela doit vous arriver, faites d'abord une [sauvegarde](sauvegarde.md).
 
+## Mises à jour automatiques
+
+L'application interroge la page des versions de GitHub au démarrage et propose la mise à jour si une version plus récente existe — avec **Plus tard**, **Ne plus demander** et **Voir plus**, qui mène aux réglages.
+
+Les réglages permettent aussi de vérifier à tout moment, de consulter les notes de version, puis de télécharger et lancer l'installation. L'application ne peut pas installer elle-même : elle présente le paquet au système, qui vous demande confirmation. Android exige en outre l'autorisation « installer des applications inconnues » pour cette application, accordée depuis les réglages du système ; le bouton vous y conduit si elle manque.
+
+L'APK correspondant à l'architecture de l'appareil est choisi automatiquement.
+
+> La mise à jour remplace l'application installée, ce qui suppose une **signature identique** : une build de debug ne peut pas être remplacée par une version publiée. Voir plus haut.
+
+« Ne plus demander » désactive le dialogue de démarrage mais **pas** la vérification dans les réglages, qui reste disponible.
+
 ## Prérequis côté serveur
 
 - Un iLO3 accessible sur le réseau, avec **SSH activé** (c'est le cas par défaut).

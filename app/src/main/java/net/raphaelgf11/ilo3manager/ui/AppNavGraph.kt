@@ -5,6 +5,16 @@ import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import net.raphaelgf11.ilo3manager.ui.update.UpdateAvailableDialog
+import net.raphaelgf11.ilo3manager.update.AvailableUpdate
+import net.raphaelgf11.ilo3manager.update.UpdateChecker
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
@@ -39,6 +49,32 @@ fun AppNavGraph(
     notificationSettingsRepository: NotificationSettingsRepository,
 ) {
     val navController = rememberNavController()
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    // Checked once per launch, and only if the prompt is enabled: the settings screen remains the
+    // place where updates are actually applied.
+    var pendingUpdate by remember { mutableStateOf<AvailableUpdate?>(null) }
+    LaunchedEffect(Unit) {
+        if (!settingsRepository.updateDialogEnabled) return@LaunchedEffect
+        pendingUpdate = withContext(Dispatchers.IO) {
+            runCatching { UpdateChecker.check(context) }.getOrNull()
+        }
+    }
+
+    pendingUpdate?.let { update ->
+        UpdateAvailableDialog(
+            update = update,
+            onLater = { pendingUpdate = null },
+            onNeverAsk = {
+                settingsRepository.updateDialogEnabled = false
+                pendingUpdate = null
+            },
+            onSeeMore = {
+                pendingUpdate = null
+                navController.navigate(ROUTE_SETTINGS)
+            },
+        )
+    }
 
     NavHost(
         navController = navController,
