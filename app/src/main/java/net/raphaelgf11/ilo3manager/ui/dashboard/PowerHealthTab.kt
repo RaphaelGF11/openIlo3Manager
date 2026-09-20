@@ -55,9 +55,10 @@ fun PowerHealthTab(controller: ControlSessionController, settingsRepository: Set
     // whenever the tab re-enters composition (e.g. switching back from another tab), so it
     // doesn't depend on a refresh-completion transition that may never come if nothing is
     // in flight when the tab reappears. Cancelled automatically when the user switches tabs.
-    LaunchedEffect(controller, dashboardState, settings.autoRefreshSeconds) {
+    val refreshSeconds = settings.refreshSecondsFor(controller.usesIpmi)
+    LaunchedEffect(controller, dashboardState, refreshSeconds) {
         if (dashboardState != ConnectionState.CONNECTED) return@LaunchedEffect
-        val delayMs = settings.autoRefreshSeconds * 1_000L
+        val delayMs = refreshSeconds * 1_000L
         controller.dashboardRefreshing.first { isRefreshing -> !isRefreshing }
         while (true) {
             delay(delayMs)

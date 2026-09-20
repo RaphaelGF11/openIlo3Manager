@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -26,6 +27,7 @@ import net.raphaelgf11.ilo3manager.data.HostRepository
 import net.raphaelgf11.ilo3manager.data.SettingsRepository
 
 private val REFRESH_INTERVAL_OPTIONS = listOf(15, 30, 60, 120)
+private val IPMI_DIVIDER_OPTIONS = listOf(2, 3, 5, 10)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,6 +78,49 @@ fun SettingsScreen(
                         label = { Text(if (seconds < 60) "${seconds}s" else "${seconds / 60}min") },
                     )
                 }
+            }
+
+            // An IPMI reading is a UDP round trip on an open session; the SSH path runs a command
+            // and parses its output. Holding both to one interval means either polling the iLO's
+            // shell too hard or letting IPMI idle for no reason.
+            androidx.compose.foundation.layout.Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                    Text("Rafraîchir plus souvent en IPMI")
+                    Text(
+                        "IPMI répond en quelques dizaines de millisecondes, là où SSH demande " +
+                            "plusieurs secondes : l'intervalle ci-dessus est divisé lorsque " +
+                            "l'onglet Alimentation passe par IPMI.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Switch(
+                    checked = settings.fasterRefreshOverIpmi,
+                    onCheckedChange = { repository.setFasterRefreshOverIpmi(it) },
+                )
+            }
+
+            if (settings.fasterRefreshOverIpmi) {
+                androidx.compose.foundation.layout.Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+                ) {
+                    IPMI_DIVIDER_OPTIONS.forEach { divider ->
+                        FilterChip(
+                            selected = settings.ipmiRefreshDivider == divider,
+                            onClick = { repository.setIpmiRefreshDivider(divider) },
+                            label = { Text("/$divider") },
+                        )
+                    }
+                }
+                val effective = settings.refreshSecondsFor(usesIpmi = true)
+                Text(
+                    "Soit ${effective}s en IPMI, contre ${settings.autoRefreshSeconds}s en SSH.",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
             }
 
             UpdateSection(settings = repository)

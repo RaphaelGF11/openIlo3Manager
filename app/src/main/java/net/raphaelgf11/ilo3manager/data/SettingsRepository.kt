@@ -11,6 +11,8 @@ class SettingsRepository(context: Context) {
     private val _settings = MutableStateFlow(
         AppSettings(
             autoRefreshSeconds = prefs.getInt(KEY_AUTO_REFRESH_SECONDS, 30),
+            fasterRefreshOverIpmi = prefs.getBoolean(KEY_IPMI_FASTER_REFRESH, true),
+            ipmiRefreshDivider = prefs.getInt(KEY_IPMI_REFRESH_DIVIDER, 3),
         ),
     )
     val settings: StateFlow<AppSettings> = _settings
@@ -28,8 +30,20 @@ class SettingsRepository(context: Context) {
         _settings.value = _settings.value.copy(autoRefreshSeconds = seconds)
     }
 
+    fun setFasterRefreshOverIpmi(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_IPMI_FASTER_REFRESH, enabled).apply()
+        _settings.value = _settings.value.copy(fasterRefreshOverIpmi = enabled)
+    }
+
+    fun setIpmiRefreshDivider(divider: Int) {
+        prefs.edit().putInt(KEY_IPMI_REFRESH_DIVIDER, divider).apply()
+        _settings.value = _settings.value.copy(ipmiRefreshDivider = divider)
+    }
+
     companion object {
         private const val KEY_AUTO_REFRESH_SECONDS = "auto_refresh_seconds"
         private const val KEY_UPDATE_DIALOG = "update_dialog_enabled"
+        private const val KEY_IPMI_FASTER_REFRESH = "ipmi_faster_refresh"
+        private const val KEY_IPMI_REFRESH_DIVIDER = "ipmi_refresh_divider"
     }
 }
