@@ -28,8 +28,9 @@ data class SshHost(
     val ipmiPort: Int = 623,
     /**
      * Privilege requested when opening an IPMI session. Operator is enough for power control and
-     * the locator LED, so asking for Administrator would needlessly require granting the iLO
-     * account every privilege.
+     * the locator LED, so Administrator is never needed. This is only a request: the iLO caps the
+     * level it grants by the account's own privileges, and an incomplete account is held at User —
+     * read-only — however high this asks.
      */
     val ipmiPrivilege: IpmiPrivilege = IpmiPrivilege.OPERATOR,
     /** Set once the user has declined the offer to enable IPMI, so it isn't proposed again. */

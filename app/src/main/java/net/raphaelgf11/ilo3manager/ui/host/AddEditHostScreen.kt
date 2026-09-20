@@ -471,9 +471,10 @@ private fun IpmiTab(
         Spacer()
         Text("Niveau de privilège demandé")
         Text(
-            "L'iLO n'accorde le niveau Administrateur qu'à un compte détenant tous les " +
-                "privilèges. Opérateur suffit pour l'alimentation et la LED UID, et Lecture seule " +
-                "pour consulter l'état sans rien pouvoir modifier.",
+            "Opérateur suffit pour l'alimentation et la LED UID ; Lecture seule permet de " +
+                "consulter l'état sans rien modifier. Attention : l'iLO plafonne le niveau " +
+                "accordé selon les privilèges du compte — un compte incomplet est ramené en " +
+                "lecture seule, quel que soit le niveau demandé ici.",
             style = MaterialTheme.typography.bodySmall,
         )
         IpmiPrivilege.entries.forEach { candidate ->

@@ -31,7 +31,7 @@ IPMI est un protocole d'administration matérielle qui court-circuite la CLI. Su
 
 **Utiliser IPMI pour l'alimentation** — l'onglet Alim passe entièrement par IPMI et n'ouvre plus aucune session SSH.
 
-**Niveau de privilège** — mesuré sur un iLO3 réel :
+**Niveau de privilège** — ce que chaque niveau autorise, mesuré sur un iLO3 réel avec un compte pleinement privilégié :
 
 | Niveau | Lecture d'état | Alimentation, LED UID |
 |---|---|---|
@@ -39,7 +39,9 @@ IPMI est un protocole d'administration matérielle qui court-circuite la CLI. Su
 | **Opérateur** (défaut) | oui | oui |
 | Administrateur | oui | oui |
 
-Opérateur suffit donc à tout ce que fait l'application. C'est important : l'iLO n'accorde le niveau Administrateur qu'à un compte détenant **tous** les privilèges, ce qu'il serait excessif de concéder pour un tableau de bord.
+**Mais ce niveau n'est pas acquis pour autant** : l'iLO le plafonne d'après les privilèges du compte. Un compte qui ne les détient pas tous est ramené à *User*, donc en lecture seule, quel que soit le niveau demandé ici. Piloter l'alimentation par IPMI suppose donc un compte iLO disposant des privilèges correspondants.
+
+Ce réglage sert à demander ce que votre compte peut réellement obtenir — inutile de réclamer Administrateur avec un compte restreint, et **Lecture seule** est le choix cohérent pour un compte délibérément limité à la consultation.
 
 **Afficher l'état dans la liste** — la liste des serveurs interroge périodiquement cet hôte pour y montrer son alimentation et ses défauts. Réservé à IPMI : une session SSH par serveur serait bien trop lente et saturerait le petit nombre de sessions simultanées qu'accepte un iLO3.
 

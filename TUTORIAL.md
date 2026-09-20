@@ -41,7 +41,9 @@ L'application vous le propose après cette première connexion. **Acceptez** : l
 
 Mais lisez l'avertissement avant de valider. IPMI ouvre le port UDP 623, et son protocole **livre par conception une empreinte de votre mot de passe à quiconque la demande**, attaquable hors ligne. C'est acceptable sur un réseau d'administration de confiance, et discutable ailleurs.
 
-Le niveau **Opérateur**, proposé par défaut, suffit à tout ce que fait l'application : inutile d'accorder tous les privilèges au compte iLO. → [Onglet IPMI](doc/configuration-hote.md#onglet-ipmi)
+Un point à connaître : l'iLO **plafonne le niveau IPMI selon les privilèges du compte**. Un compte qui ne les détient pas tous est ramené à *User*, c'est-à-dire en lecture seule — l'état s'affiche, mais aucune action d'alimentation ne passe. Pour piloter l'alimentation par IPMI, le compte doit donc disposer des privilèges correspondants côté iLO.
+
+Le sélecteur de niveau sert à demander ce que votre compte peut réellement obtenir : gardez **Opérateur** avec un compte complet, choisissez **Lecture seule** pour un compte volontairement restreint. → [Onglet IPMI](doc/configuration-hote.md#onglet-ipmi)
 
 ## 5. Explorer
 

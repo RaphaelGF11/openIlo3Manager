@@ -41,7 +41,7 @@ De même, `StrictHostKeyChecking` est désactivé pour SSH, l'application ne dis
 
 La poignée de main RAKP d'IPMI 2.0 **livre par conception une empreinte du mot de passe à quiconque la demande**, attaquable hors ligne. C'est inhérent au protocole, non à cette application ni à votre configuration.
 
-C'est la raison pour laquelle IPMI est désactivé par défaut, et pourquoi son activation demande toujours confirmation en expliquant ce point. Le niveau **Opérateur** est proposé par défaut plutôt qu'Administrateur, afin que le compte iLO n'ait pas à détenir tous les privilèges.
+C'est la raison pour laquelle IPMI est désactivé par défaut, et pourquoi son activation demande toujours confirmation en expliquant ce point. Le niveau **Opérateur** est proposé par défaut plutôt qu'Administrateur : l'application n'a jamais besoin du second. Notez toutefois que l'iLO plafonne le niveau accordé d'après les privilèges du compte — un compte restreint sera ramené en lecture seule, ce qui limite d'autant la portée d'un identifiant compromis.
 
 ### Exposer la passerelle web
 

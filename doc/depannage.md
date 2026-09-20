@@ -36,7 +36,9 @@ Par ordre de probabilité : IPMI n'est pas activé sur l'iLO ; l'hôte n'a pas d
 
 **« Commande IPMI refusée (code 0xd4) »**
 
-Privilège insuffisant. La lecture d'état fonctionne, les actions non : passez le niveau de **Lecture seule** à **Opérateur** dans l'onglet IPMI.
+Privilège insuffisant : la lecture d'état fonctionne, les actions non.
+
+Vérifiez d'abord le niveau demandé dans l'onglet IPMI. S'il est déjà sur **Opérateur**, la cause est côté iLO : le niveau accordé est plafonné par les privilèges du compte, et un compte incomplet est ramené en lecture seule. Accordez-lui les privilèges nécessaires dans Administration › Gestion des utilisateurs.
 
 **« Ressources insuffisantes sur l'iLO »**
 
