@@ -19,8 +19,8 @@ android {
         applicationId = "net.raphaelgf11.ilo3manager"
         minSdk = 21
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0-beta1"
+        versionCode = 3
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
