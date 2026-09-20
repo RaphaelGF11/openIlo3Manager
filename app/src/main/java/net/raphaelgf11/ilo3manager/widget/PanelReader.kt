@@ -106,7 +106,7 @@ object PanelReader {
             uid = uid,
             nics = List(4) { index -> linkFor(sensors, index + 1) },
             psus = List(2) { index -> ledFor(sensors, listOf("power supply", "ps "), index + 1) },
-            overTemp = ledForAny(sensors, listOf("temp", "ambient", "inlet")),
+            overTemp = overTempLed(sensors),
             powerCap = Led.OFF,
             dimmsLeft = List(9) { index -> ledForDimm(sensors, bank = 0, slot = index + 1) },
             dimmsRight = List(9) { index -> ledForDimm(sensors, bank = 1, slot = index + 1) },
@@ -143,12 +143,19 @@ object PanelReader {
         return worstLed(matching)
     }
 
-    private fun ledForAny(sensors: List<IpmiSensor>, keywords: List<String>): Led {
-        val matching = sensors.filter { sensor ->
+    /**
+     * The indicator is called OVER TEMP, so only an upper-threshold excursion lights it.
+     *
+     * Taking the worst health across every temperature sensor would also catch a reading below a
+     * lower threshold — a cold spare or an unpopulated socket — and report it as overheating.
+     */
+    private fun overTempLed(sensors: List<IpmiSensor>): Led {
+        val tooHot = sensors.any { sensor ->
             val name = sensor.name.lowercase()
-            keywords.any { name.contains(it) }
+            (name.contains("temp") || name.contains("ambient") || name.contains("inlet")) &&
+                sensor.aboveUpperThreshold
         }
-        return worstLed(matching)
+        return if (tooHot) Led.AMBER else Led.OFF
     }
 
     /**

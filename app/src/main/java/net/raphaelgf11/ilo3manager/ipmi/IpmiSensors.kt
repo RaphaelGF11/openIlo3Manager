@@ -8,13 +8,22 @@ data class IpmiSensor(
     val reading: String,
     val health: SensorHealth,
     /**
-     * Raw asserted state bits for a discrete sensor, zero for a threshold one. Their meaning
-     * depends on the sensor type, so they are carried rather than interpreted here.
+     * Byte 3 of Get Sensor Reading, carried raw because it means two different things: asserted
+     * event states on a discrete sensor, threshold comparison results on a threshold one.
      */
     val states: Int = 0,
     /** The SDR's Event/Reading Type Code, kept so callers can tell the two families apart. */
     val eventReadingType: Int = 0x01,
-)
+) {
+    /**
+     * True when a threshold sensor reads above one of its upper thresholds.
+     *
+     * Bits 3, 4 and 5 are the upper non-critical, critical and non-recoverable comparisons. The
+     * lower ones say the opposite thing, which matters wherever only one direction is a fault.
+     */
+    val aboveUpperThreshold: Boolean
+        get() = eventReadingType == 0x01 && (states and 0x38) != 0
+}
 
 enum class SensorHealth { OK, DEGRADED, CRITICAL, UNAVAILABLE }
 
@@ -213,7 +222,7 @@ class IpmiSensorReader(private val client: IpmiLanClient) {
             sensorType = entry.sensorType,
             reading = reading,
             health = health,
-            states = if (entry.thresholdBased) 0 else comparison,
+            states = comparison,
             eventReadingType = entry.eventReadingType,
         )
     }
