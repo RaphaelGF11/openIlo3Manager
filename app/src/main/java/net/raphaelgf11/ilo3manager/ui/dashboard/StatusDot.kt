@@ -23,7 +23,7 @@ private val COLOURS = mapOf(
     HostIndicator.CRITICAL to Color(0xFFE53935),
     HostIndicator.POWERED_ON to Color(0xFF3DDC84),
     // Deep blue, matching the chassis lamp; a lighter tone reads as cyan next to the green dot.
-    HostIndicator.UID to Color(0xFF1D4ED8),
+    HostIndicator.UID to Color(0xFF1F72E6),
 )
 
 /**

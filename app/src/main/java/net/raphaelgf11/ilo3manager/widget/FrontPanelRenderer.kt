@@ -31,7 +31,7 @@ object FrontPanelRenderer {
     private const val AMBER = 0xFFFF9A15.toInt()
     private const val RED = 0xFFFF2A20.toInt()
     /** A deep, saturated blue — the locator lamp reads blue on the chassis, never cyan. */
-    private const val UID_BLUE = 0xFF1D4ED8.toInt()
+    private const val UID_BLUE = 0xFF1F72E6.toInt()
 
     private const val SILKSCREEN = 0xFFB6BAC2.toInt()
     private const val PANEL_DARK = 0xFF121418.toInt()
@@ -467,7 +467,7 @@ object FrontPanelRenderer {
             lit.shader = RadialGradient(
                 cx, cy, 45f,
                 // A pale blue core rather than a white one: white washes the lamp out to cyan.
-                intArrayOf(0xFF9DBEFF.toInt(), 0xFF3B6FE8.toInt(), UID_BLUE),
+                intArrayOf(0xFFB8D6FF.toInt(), 0xFF4E95F0.toInt(), UID_BLUE),
                 floatArrayOf(0f, 0.42f, 1f),
                 Shader.TileMode.CLAMP,
             )
