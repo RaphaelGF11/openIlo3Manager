@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">ilo3manager</string>
     <string name="widget_front_panel_description">Panneau avant du serveur, lu par IPMI</string>
+    <string name="widget_front_panel_refresh">Actualiser le panneau</string>
 </resources>

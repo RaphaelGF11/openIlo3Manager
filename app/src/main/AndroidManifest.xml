@@ -64,6 +64,7 @@
             android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="net.raphaelgf11.ilo3manager.action.REFRESH_PANEL" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"

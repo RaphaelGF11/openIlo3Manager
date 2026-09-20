@@ -23,6 +23,17 @@ class FrontPanelWidget : AppWidgetProvider() {
         appWidgetIds.forEach { requestRefresh(context, it) }
     }
 
+    override fun onReceive(context: Context, intent: android.content.Intent) {
+        if (intent.action == ACTION_REFRESH) {
+            requestRefresh(
+                context,
+                intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID),
+            )
+            return
+        }
+        super.onReceive(context, intent)
+    }
+
     override fun onEnabled(context: Context) {
         schedulePeriodicRefresh(context)
         PanelRefreshScheduler.ensureRunning(context)
@@ -54,6 +65,7 @@ class FrontPanelWidget : AppWidgetProvider() {
     companion object {
         private const val PERIODIC_WORK = "front_panel_refresh"
         const val KEY_WIDGET_ID = "widget_id"
+        const val ACTION_REFRESH = "net.raphaelgf11.ilo3manager.action.REFRESH_PANEL"
 
         fun requestRefresh(context: Context, widgetId: Int) {
             if (widgetId == AppWidgetManager.INVALID_APPWIDGET_ID) return

@@ -7,6 +7,13 @@ data class IpmiSensor(
     val sensorType: Int,
     val reading: String,
     val health: SensorHealth,
+    /**
+     * Raw asserted state bits for a discrete sensor, zero for a threshold one. Their meaning
+     * depends on the sensor type, so they are carried rather than interpreted here.
+     */
+    val states: Int = 0,
+    /** The SDR's Event/Reading Type Code, kept so callers can tell the two families apart. */
+    val eventReadingType: Int = 0x01,
 )
 
 enum class SensorHealth { OK, DEGRADED, CRITICAL, UNAVAILABLE }
@@ -200,7 +207,15 @@ class IpmiSensorReader(private val client: IpmiLanClient) {
             entry.analog -> formatAnalog(entry, raw)
             else -> "0x%02x".format(raw)
         }
-        return IpmiSensor(entry.number, entry.name, entry.sensorType, reading, health)
+        return IpmiSensor(
+            number = entry.number,
+            name = entry.name,
+            sensorType = entry.sensorType,
+            reading = reading,
+            health = health,
+            states = if (entry.thresholdBased) 0 else comparison,
+            eventReadingType = entry.eventReadingType,
+        )
     }
 
     private fun thresholdHealth(comparison: Int): SensorHealth = when {

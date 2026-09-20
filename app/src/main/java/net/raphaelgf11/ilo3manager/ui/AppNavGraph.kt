@@ -47,9 +47,17 @@ fun AppNavGraph(
     repository: HostRepository,
     settingsRepository: SettingsRepository,
     notificationSettingsRepository: NotificationSettingsRepository,
+    initialHostId: String? = null,
 ) {
     val navController = rememberNavController()
     val context = androidx.compose.ui.platform.LocalContext.current
+
+    // Opened from a front-panel widget: go straight to that server, with the host list left
+    // underneath so Back returns there rather than out of the app.
+    LaunchedEffect(initialHostId) {
+        val host = initialHostId?.let { id -> repository.getHosts().firstOrNull { it.id == id } }
+        if (host != null) navController.navigate("hosts/${host.id}")
+    }
 
     // Checked once per launch, and only if the prompt is enabled: the settings screen remains the
     // place where updates are actually applied.

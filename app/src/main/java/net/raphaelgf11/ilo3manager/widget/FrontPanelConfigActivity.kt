@@ -24,13 +24,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import net.raphaelgf11.ilo3manager.data.HostRepository
+import net.raphaelgf11.ilo3manager.ipmi.IpmiSensor
 import net.raphaelgf11.ilo3manager.data.SshHost
 import net.raphaelgf11.ilo3manager.ui.theme.Ilo3managerTheme
 
@@ -161,6 +166,54 @@ private fun ConfigScreen(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text("Ajouter le widget")
+        }
+
+        selected?.let { SensorDiagnostic(host = it) }
+    }
+}
+
+/**
+ * Lists the sensors the BMC actually reports.
+ *
+ * Panel positions are matched against sensor names, and those names come from the firmware: when an
+ * indicator lights for the wrong component, or stays dark for the right one, this is the only way
+ * to see why.
+ */
+@Composable
+private fun SensorDiagnostic(host: SshHost) {
+    val scope = rememberCoroutineScope()
+    var sensors by remember(host.id) { mutableStateOf<List<IpmiSensor>?>(null) }
+    var error by remember(host.id) { mutableStateOf<String?>(null) }
+    var loading by remember(host.id) { mutableStateOf(false) }
+
+    androidx.compose.material3.OutlinedButton(
+        onClick = {
+            loading = true
+            error = null
+            scope.launch {
+                runCatching { withContext(Dispatchers.IO) { PanelReader.readAllSensors(host) } }
+                    .onSuccess { sensors = it }
+                    .onFailure { error = it.message ?: "Lecture impossible" }
+                loading = false
+            }
+        },
+        enabled = !loading && host.ipmiEnabled,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(if (loading) "Lecture des capteurs…" else "Voir les capteurs détectés")
+    }
+
+    error?.let {
+        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+    }
+    sensors?.let { list ->
+        Text("${list.size} capteur(s)", style = MaterialTheme.typography.titleSmall)
+        list.forEach { sensor ->
+            Text(
+                "${sensor.name} — ${sensor.reading} — ${sensor.health}" +
+                    if (sensor.eventReadingType != 0x01) " — états 0x%02x".format(sensor.states) else "",
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
     }
 }

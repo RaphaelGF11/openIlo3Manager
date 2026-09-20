@@ -65,7 +65,8 @@ class FrontPanelUpdateWorker(
             FrontPanelRenderer.render(state, widthPx = bitmapWidth(manager, widgetId)),
         )
         views.setTextViewText(R.id.caption, caption)
-        views.setOnClickPendingIntent(R.id.panel, openAppIntent())
+        views.setOnClickPendingIntent(R.id.panel, openHostIntent(widgetId, host))
+        views.setOnClickPendingIntent(R.id.refresh, refreshIntent(widgetId))
         manager.updateAppWidget(widgetId, views)
     }
 
@@ -92,11 +93,33 @@ class FrontPanelUpdateWorker(
         return pixels.coerceIn(480, 1100)
     }
 
-    private fun openAppIntent(): PendingIntent {
+    /** Tapping the panel opens the server it belongs to, not merely the app. */
+    private fun openHostIntent(widgetId: Int, host: SshHost?): PendingIntent {
         val intent = Intent(applicationContext, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        val flags = PendingIntent.FLAG_UPDATE_CURRENT or
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
-        return PendingIntent.getActivity(applicationContext, 0, intent, flags)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        if (host != null) intent.putExtra(MainActivity.EXTRA_HOST_ID, host.id)
+        // A distinct request code per widget, or several panels would share one cached intent and
+        // every tap would open whichever server was configured first.
+        return PendingIntent.getActivity(applicationContext, widgetId, intent, pendingIntentFlags())
+    }
+
+    private fun refreshIntent(widgetId: Int): PendingIntent {
+        val intent = Intent(applicationContext, FrontPanelWidget::class.java)
+            .setAction(FrontPanelWidget.ACTION_REFRESH)
+            .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
+        return PendingIntent.getBroadcast(
+            applicationContext,
+            // Offset so it cannot collide with the panel's own request code.
+            widgetId + REFRESH_REQUEST_OFFSET,
+            intent,
+            pendingIntentFlags(),
+        )
+    }
+
+    private fun pendingIntentFlags(): Int = PendingIntent.FLAG_UPDATE_CURRENT or
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+
+    private companion object {
+        const val REFRESH_REQUEST_OFFSET = 1_000_000
     }
 }

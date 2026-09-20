@@ -24,6 +24,12 @@ import net.raphaelgf11.ilo3manager.ui.auth.LockScreen
 import net.raphaelgf11.ilo3manager.ui.theme.Ilo3managerTheme
 
 class MainActivity : FragmentActivity() {
+
+    companion object {
+        /** Opens straight onto one host; set by the front-panel widget. */
+        const val EXTRA_HOST_ID = "host_id"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -85,6 +91,7 @@ class MainActivity : FragmentActivity() {
                         repository = repository,
                         settingsRepository = settingsRepository,
                         notificationSettingsRepository = notificationSettingsRepository,
+                        initialHostId = intent?.getStringExtra(EXTRA_HOST_ID),
                     )
                 }
                 if (!unlocked) {

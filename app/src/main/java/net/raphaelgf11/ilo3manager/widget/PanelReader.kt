@@ -46,6 +46,29 @@ object PanelReader {
         }
     }
 
+    /**
+     * Every sensor the BMC reports, for the diagnostic list in the widget's settings.
+     *
+     * The mapping from sensor names to panel positions can only be as good as the names, which come
+     * from the firmware; being able to see them is what makes a wrong indicator fixable.
+     */
+    fun readAllSensors(host: SshHost): List<IpmiSensor> {
+        val endpoint = HostTunnelManager.endpointFor(host, host.ipmiPort, udp = true)
+        val client = IpmiLanClient(
+            endpoint.host,
+            endpoint.port,
+            host.username,
+            host.password,
+            host.ipmiPrivilege,
+        )
+        return try {
+            client.open()
+            readSensors(client)
+        } finally {
+            client.close()
+        }
+    }
+
     private fun readSensors(client: IpmiLanClient): List<IpmiSensor> {
         val reader = IpmiSensorReader(client)
         val repository = reader.readRepository()
@@ -81,9 +104,7 @@ object PanelReader {
             power = power,
             health = health,
             uid = uid,
-            // The NIC indicators track link state, which IPMI does not expose; showing port 1 lit
-            // would be an invention. They stay dark.
-            nics = List(4) { Led.OFF },
+            nics = List(4) { index -> linkFor(sensors, index + 1) },
             psus = List(2) { index -> ledFor(sensors, listOf("power supply", "ps "), index + 1) },
             overTemp = ledForAny(sensors, listOf("temp", "ambient", "inlet")),
             powerCap = Led.OFF,
@@ -93,6 +114,24 @@ object PanelReader {
             ampStatus = Led.OFF,
             fans = List(6) { index -> ledFor(sensors, listOf("fan"), index + 1) },
         )
+    }
+
+    /**
+     * Link state for one network port.
+     *
+     * The BMC names these sensors itself and the wording varies with firmware, so the match is by
+     * keyword and port number. A discrete sensor with any state bit asserted counts as up; a dark
+     * indicator therefore covers both "no link" and "this firmware reports nothing", which is what
+     * the panel does anyway.
+     */
+    private fun linkFor(sensors: List<IpmiSensor>, port: Int): LinkLed {
+        val match = sensors.firstOrNull { sensor ->
+            val name = sensor.name.lowercase()
+            val mentionsNic = name.contains("nic") || name.contains("lom") ||
+                name.contains("link") || name.contains("eth")
+            mentionsNic && mentionsSlot(name, port)
+        } ?: return LinkLed.OFF
+        return if (match.states != 0) LinkLed.GREEN else LinkLed.OFF
     }
 
     /** Worst health among sensors whose name carries one of [keywords] and the given [slot]. */

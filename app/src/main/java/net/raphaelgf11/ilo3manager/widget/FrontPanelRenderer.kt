@@ -170,7 +170,11 @@ object FrontPanelRenderer {
         val y = 120f
         nicX.forEachIndexed { index, x ->
             drawNicGlyph(canvas, x - 66f, y)
-            drawLed(canvas, x, y, 13f, state.nics.getOrElse(index) { Led.OFF })
+            // Green, not amber: these report a link, not a fault.
+            drawLamp(
+                canvas, x, y, 13f,
+                if (state.nics.getOrElse(index) { LinkLed.OFF } == LinkLed.GREEN) GREEN else null,
+            )
             canvas.drawText("${index + 1}", x + 34f, y + 12f, textPaint(32f))
         }
     }
@@ -183,16 +187,17 @@ object FrontPanelRenderer {
         val stroke = strokePaint(2.4f)
         canvas.drawLine(cx - 26f, cy, cx + 26f, cy, stroke)
 
-        val node = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = withAlpha(SILKSCREEN, 0xD0) }
-        canvas.drawCircle(cx - 26f, cy, 5f, node)
+        // Node and terminals are solid blocks on the real label, not outlines.
+        val solid = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = withAlpha(SILKSCREEN, 0xD0) }
+        canvas.drawCircle(cx - 26f, cy, 5f, solid)
 
         // Terminal above, centred.
         canvas.drawLine(cx, cy, cx, cy - 10f, stroke)
-        canvas.drawRect(cx - 9f, cy - 24f, cx + 9f, cy - 10f, stroke)
+        canvas.drawRect(cx - 9f, cy - 24f, cx + 9f, cy - 10f, solid)
         // Two terminals below, either side.
         for (dx in floatArrayOf(-15f, 17f)) {
             canvas.drawLine(cx + dx, cy, cx + dx, cy + 10f, stroke)
-            canvas.drawRect(cx + dx - 9f, cy + 10f, cx + dx + 9f, cy + 24f, stroke)
+            canvas.drawRect(cx + dx - 9f, cy + 10f, cx + dx + 9f, cy + 24f, solid)
         }
     }
 
@@ -359,24 +364,40 @@ object FrontPanelRenderer {
         }
     }
 
-    /** Four swept blades around a hub, the way the fan symbol is moulded. */
+    /**
+     * Four swept blades around a hub.
+     *
+     * Drawn as curved petals rather than four discs: discs read as dots at this size, which is
+     * precisely what the moulded symbol does not look like.
+     */
     private fun drawFanGlyph(canvas: Canvas, cx: Float, cy: Float) {
         val blade = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
-            color = withAlpha(SILKSCREEN, 0xC0)
+            color = withAlpha(SILKSCREEN, 0xC8)
         }
+        // Four petals joined at a filled centre, with a clear notch between each: set any further
+        // apart they read as four dots, any closer and they merge into a blob. Both are wrong.
+        val lobeR = 6.6f
+        val lobeOffset = 7.8f
+        val clover = Path()
         for (i in 0 until 4) {
-            val angle = Math.toRadians((i * 90 + 45).toDouble())
-            val bx = cx + (Math.cos(angle) * 8.5f).toFloat()
-            val by = cy + (Math.sin(angle) * 8.5f).toFloat()
-            val petal = RectF(bx - 7f, by - 7f, bx + 7f, by + 7f)
-            canvas.drawArc(petal, 0f, 360f, false, blade)
+            val base = i * 90f + 45f
+            clover.addCircle(
+                polarX(cx, lobeOffset, base),
+                polarY(cy, lobeOffset, base),
+                lobeR,
+                Path.Direction.CW,
+            )
         }
-        // The hub is punched out of the blades.
-        val hub = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = LABEL_FACE }
-        canvas.drawCircle(cx, cy, 4.5f, hub)
-        canvas.drawCircle(cx, cy, 4.5f, strokePaint(1.6f))
+        clover.addCircle(cx, cy, 4.6f, Path.Direction.CW)
+        canvas.drawPath(clover, blade)
     }
+
+    private fun polarX(cx: Float, radius: Float, degrees: Float): Float =
+        cx + (Math.cos(Math.toRadians(degrees.toDouble())) * radius).toFloat()
+
+    private fun polarY(cy: Float, radius: Float, degrees: Float): Float =
+        cy + (Math.sin(Math.toRadians(degrees.toDouble())) * radius).toFloat()
 
     // ----------------------------------------------------------- right column
 

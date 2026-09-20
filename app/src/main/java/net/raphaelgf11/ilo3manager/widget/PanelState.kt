@@ -13,6 +13,12 @@ package net.raphaelgf11.ilo3manager.widget
 enum class Led { OFF, AMBER }
 
 /**
+ * The network port indicators, which report link rather than failure: green when the port is up,
+ * dark otherwise. Kept apart from [Led] so a fault can never be painted green, nor a link amber.
+ */
+enum class LinkLed { OFF, GREEN }
+
+/**
  * The ring around the power button.
  *
  * [OFF] is the server powered down but still plugged in — the amber button. [UNREACHABLE] is the
@@ -35,7 +41,7 @@ data class PanelState(
     val power: PowerLed = PowerLed.UNREACHABLE,
     val health: HealthLed = HealthLed.OFF,
     val uid: Boolean = false,
-    val nics: List<Led> = List(4) { Led.OFF },
+    val nics: List<LinkLed> = List(4) { LinkLed.OFF },
     val psus: List<Led> = List(2) { Led.OFF },
     val overTemp: Led = Led.OFF,
     val powerCap: Led = Led.OFF,
