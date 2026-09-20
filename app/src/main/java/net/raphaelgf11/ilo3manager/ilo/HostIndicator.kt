@@ -25,22 +25,30 @@ enum class HostIndicator {
     ;
 
     companion object {
-        fun from(status: ChassisStatus): HostIndicator = when {
-            status.hasCriticalFault -> CRITICAL
-            status.hasFault -> FAULT
-            status.identifyOn -> UID
-            status.power == ChassisPowerState.OFF -> POWERED_OFF
-            status.power == ChassisPowerState.ON -> POWERED_ON
-            else -> UNKNOWN
-        }
-
-        /** Derived from the SSH path, which reports health but knows nothing about the locator LED. */
-        fun from(power: PowerState, health: HealthLevel): HostIndicator = when {
+        /**
+         * Single rule for the dot, so every caller ranks the same way.
+         *
+         * A fault outranks the locator: the blue lamp is on because someone is looking for the
+         * machine, but if it is also broken, that is what they need to be told first. The SSH path
+         * knows nothing about the locator and passes [identifyOn] as false.
+         */
+        fun from(
+            power: PowerState,
+            health: HealthLevel,
+            identifyOn: Boolean = false,
+        ): HostIndicator = when {
             health == HealthLevel.CRITICAL -> CRITICAL
             health == HealthLevel.DEGRADED -> FAULT
+            identifyOn -> UID
             power == PowerState.OFF -> POWERED_OFF
             power == PowerState.ON -> POWERED_ON
             else -> UNKNOWN
+        }
+
+        fun powerStateOf(status: ChassisStatus): PowerState = when (status.power) {
+            ChassisPowerState.ON -> PowerState.ON
+            ChassisPowerState.OFF -> PowerState.OFF
+            ChassisPowerState.UNKNOWN -> PowerState.UNKNOWN
         }
     }
 }

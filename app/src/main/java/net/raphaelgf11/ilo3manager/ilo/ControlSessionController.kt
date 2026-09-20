@@ -240,7 +240,11 @@ class ControlSessionController(private var host: SshHost) {
             _identifyOn.value = status.identifyOn
 
             _overallHealth.value = overallHealthOverIpmi(ipmi, status)
-            _indicator.value = HostIndicator.from(_powerState.value, _overallHealth.value)
+            _indicator.value = HostIndicator.from(
+                _powerState.value,
+                _overallHealth.value,
+                status.identifyOn,
+            )
         }
     }
 
@@ -253,20 +257,7 @@ class ControlSessionController(private var host: SshHost) {
      * refresh pays for reading it.
      */
     private fun overallHealthOverIpmi(ipmi: IpmiLanClient, status: ChassisStatus): HealthLevel {
-        val sensors = runCatching {
-            val reader = IpmiSensorReader(ipmi)
-            val entries = cachedSdr ?: reader.readRepository().also { cachedSdr = it }
-            entries.mapNotNull { reader.readSensor(it) }
-        }.getOrElse { emptyList() }
-
-        val worst = sensors.fold(HealthLevel.OK) { worst, sensor ->
-            val level = when (sensor.health) {
-                SensorHealth.CRITICAL -> HealthLevel.CRITICAL
-                SensorHealth.DEGRADED -> HealthLevel.DEGRADED
-                SensorHealth.OK, SensorHealth.UNAVAILABLE -> HealthLevel.OK
-            }
-            if (level.ordinal > worst.ordinal) level else worst
-        }
+        val worst = runCatching { IpmiSdrCache.worstHealth(ipmi, host.id) }.getOrElse { HealthLevel.OK }
 
         return when {
             status.hasCriticalFault || worst == HealthLevel.CRITICAL -> HealthLevel.CRITICAL
@@ -420,9 +411,9 @@ class ControlSessionController(private var host: SshHost) {
     private fun loadHardwareOverIpmi() {
         withIpmi { client ->
             val reader = IpmiSensorReader(client)
-            val entries = cachedSdr ?: reader.readRepository { scanned, total ->
+            val entries = IpmiSdrCache.entries(client, host.id) { scanned, total ->
                 report("Lecture du répertoire de capteurs ($scanned/$total)…")
-            }.also { cachedSdr = it }
+            }
 
             report("Lecture des capteurs…")
             val components = entries.mapNotNull { entry ->
@@ -459,8 +450,6 @@ class ControlSessionController(private var host: SshHost) {
         0x0D -> "drives"
         else -> "other"
     }
-
-    private var cachedSdr: List<SdrEntry>? = null
 
     private suspend fun fetchCategory(category: String): List<HardwareComponent> {
         val rootTargets = IloCliParser.parseTargets(client.runCommand("show /system1"))
@@ -571,7 +560,6 @@ class ControlSessionController(private var host: SshHost) {
     }
 
     fun disconnect() {
-        cachedSdr = null
         _indicator.value = HostIndicator.UNKNOWN
         client.disconnect()
         _connectionState.value = ConnectionState.DISCONNECTED

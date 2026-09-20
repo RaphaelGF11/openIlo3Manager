@@ -30,7 +30,8 @@ object FrontPanelRenderer {
     private const val GREEN = 0xFF3BE03F.toInt()
     private const val AMBER = 0xFFFF9A15.toInt()
     private const val RED = 0xFFFF2A20.toInt()
-    private const val UID_BLUE = 0xFF4FA8FF.toInt()
+    /** A deep, saturated blue — the locator lamp reads blue on the chassis, never cyan. */
+    private const val UID_BLUE = 0xFF1D4ED8.toInt()
 
     private const val SILKSCREEN = 0xFFB6BAC2.toInt()
     private const val PANEL_DARK = 0xFF121418.toInt()
@@ -465,8 +466,9 @@ object FrontPanelRenderer {
             val lit = Paint(Paint.ANTI_ALIAS_FLAG)
             lit.shader = RadialGradient(
                 cx, cy, 45f,
-                intArrayOf(Color.WHITE, 0xFFBFE2FF.toInt(), UID_BLUE),
-                floatArrayOf(0f, 0.38f, 1f),
+                // A pale blue core rather than a white one: white washes the lamp out to cyan.
+                intArrayOf(0xFF9DBEFF.toInt(), 0xFF3B6FE8.toInt(), UID_BLUE),
+                floatArrayOf(0f, 0.42f, 1f),
                 Shader.TileMode.CLAMP,
             )
             canvas.drawCircle(cx, cy, 41f, lit)

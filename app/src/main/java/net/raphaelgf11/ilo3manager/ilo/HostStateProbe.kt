@@ -24,7 +24,20 @@ object HostStateProbe {
             val ipmi = IpmiLanClient(endpoint.host, endpoint.port, host.username, host.password, host.ipmiPrivilege)
             try {
                 ipmi.open()
-                HostIndicator.from(ipmi.getChassisStatus())
+                val status = ipmi.getChassisStatus()
+                // Chassis status alone misses component faults — a dead power supply leaves every
+                // one of its bits clear — so the dot would stay green, or blue when the locator is
+                // lit, on a machine that is actually degraded.
+                val health = maxOf(
+                    IpmiSdrCache.worstHealth(ipmi, host.id),
+                    when {
+                        status.hasCriticalFault -> HealthLevel.CRITICAL
+                        status.hasFault -> HealthLevel.DEGRADED
+                        else -> HealthLevel.OK
+                    },
+                    compareBy { it.ordinal },
+                )
+                HostIndicator.from(HostIndicator.powerStateOf(status), health, status.identifyOn)
             } finally {
                 ipmi.close()
             }
