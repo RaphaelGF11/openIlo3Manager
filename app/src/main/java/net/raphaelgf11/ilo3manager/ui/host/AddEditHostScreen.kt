@@ -130,6 +130,7 @@ fun AddEditHostScreen(
     var hardwareOverIpmi by remember { mutableStateOf(existingHost?.hardwareOverIpmi ?: false) }
     var ipmiPrivilege by remember { mutableStateOf(existingHost?.ipmiPrivilege ?: IpmiPrivilege.OPERATOR) }
     var alwaysOpenSsh by remember { mutableStateOf(existingHost?.alwaysOpenSsh ?: false) }
+    var notificationsOverIpmi by remember { mutableStateOf(existingHost?.notificationsOverIpmi ?: false) }
     var vpnType by remember { mutableStateOf(existingHost?.vpnType ?: VpnType.NONE) }
     var wireGuardConfig by remember { mutableStateOf(existingHost?.wireGuardConfig ?: "") }
     var sshTunnelConfig by remember { mutableStateOf(existingHost?.sshTunnelConfig ?: "") }
@@ -201,6 +202,7 @@ fun AddEditHostScreen(
                             hardwareOverIpmi = hardwareOverIpmi && ipmiEnabled,
                             ipmiPrivilege = ipmiPrivilege,
                             alwaysOpenSsh = alwaysOpenSsh && ipmiEnabled,
+                            notificationsOverIpmi = notificationsOverIpmi && ipmiEnabled,
                             vpnType = vpnType,
                             wireGuardConfig = wireGuardConfig,
                             sshTunnelConfig = sshTunnelConfig,
@@ -323,6 +325,8 @@ fun AddEditHostScreen(
                         onPrivilegeChange = { ipmiPrivilege = it },
                         alwaysOpenSsh = alwaysOpenSsh,
                         onAlwaysOpenSshChange = { alwaysOpenSsh = it },
+                        notificationsOverIpmi = notificationsOverIpmi,
+                        onNotificationsOverIpmiChange = { notificationsOverIpmi = it },
                         port = ipmiPort,
                         onPortChange = { ipmiPort = it },
                         authMethod = authMethod,
@@ -576,6 +580,8 @@ private fun IpmiTab(
     privilege: IpmiPrivilege,
     onPrivilegeChange: (IpmiPrivilege) -> Unit,
     alwaysOpenSsh: Boolean,
+    notificationsOverIpmi: Boolean,
+    onNotificationsOverIpmiChange: (Boolean) -> Unit,
     onAlwaysOpenSshChange: (Boolean) -> Unit,
     port: String,
     onPortChange: (String) -> Unit,
@@ -677,6 +683,25 @@ private fun IpmiTab(
                 )
             }
             Switch(checked = alwaysOpenSsh, onCheckedChange = onAlwaysOpenSshChange)
+        }
+
+        Spacer()
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                Text("Surveillance par IPMI")
+                Text(
+                    "La vérification périodique ouvre une connexion neuve à chaque tour, pour " +
+                        "chaque serveur surveillé : en SSH cela coûte plusieurs secondes et l'une " +
+                        "des rares sessions simultanées de l'iLO, en IPMI quelques échanges UDP. " +
+                        "En contrepartie l'alerte nomme des capteurs plutôt que des composants.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Switch(checked = notificationsOverIpmi, onCheckedChange = onNotificationsOverIpmiChange)
         }
         Spacer()
         OutlinedTextField(

@@ -69,6 +69,16 @@ data class SshHost(
      * must never start a session per server.
      */
     val alwaysOpenSsh: Boolean = false,
+    /**
+     * Run the background monitoring check over IPMI instead of SSH.
+     *
+     * The check opens a fresh connection every round, per monitored host. Over SSH that costs
+     * seconds and one of the iLO's very few concurrent sessions; over IPMI it is a handful of UDP
+     * exchanges against a repository already cached. It reports sensor health rather than the CLI's
+     * component inventory, so a notification names fewer components — the trade the hardware tab
+     * already makes.
+     */
+    val notificationsOverIpmi: Boolean = false,
     val vpnType: VpnType = VpnType.NONE,
     /**
      * Each tunnel type keeps its own field rather than sharing one.
