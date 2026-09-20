@@ -56,6 +56,25 @@ class IloWebApiClient(private val host: SshHost) {
         if (message.isNotBlank()) throw IOException("L'iLO a refusé la modification : $message")
     }
 
+    /**
+     * Tries several endpoints within a single session, reporting what each returned.
+     *
+     * Which JSON endpoints an iLO3 serves is not documented and varies with firmware, and every
+     * login costs one of the few sessions this BMC has. Probing them all at once, logged in once,
+     * is the only way to find out without either guessing or exhausting the pool.
+     */
+    fun probe(password: String, paths: List<String>): List<ProbeResult> = withSession(password) { sessionKey ->
+        paths.map { path ->
+            runCatching { request("GET", path, sessionKey, null) }
+                .fold(
+                    onSuccess = { ProbeResult(path, ok = true, body = it) },
+                    onFailure = { ProbeResult(path, ok = false, body = it.message ?: "échec") },
+                )
+        }
+    }
+
+    class ProbeResult(val path: String, val ok: Boolean, val body: String)
+
     private fun request(method: String, path: String, sessionKey: String?, body: String?): String {
         val endpoint = HostTunnelManager.endpointFor(host, host.httpsPort)
         LegacyTlsHttpClient.connect(endpoint.host, endpoint.port).use { connection ->

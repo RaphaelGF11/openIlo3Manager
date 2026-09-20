@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
@@ -36,6 +38,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.raphaelgf11.ilo3manager.data.HostRepository
+import net.raphaelgf11.ilo3manager.ilo.IloWebApiClient
 import net.raphaelgf11.ilo3manager.ipmi.IpmiSensor
 import net.raphaelgf11.ilo3manager.data.SshHost
 import net.raphaelgf11.ilo3manager.ui.theme.Ilo3managerTheme
@@ -124,6 +127,11 @@ private fun ConfigScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            // Android 15 draws every app edge to edge, and this screen has no Scaffold to inset it:
+            // without this the title sits under the clock and the last button under the navigation
+            // bar, where it cannot be tapped at all.
+            .systemBarsPadding()
+            .imePadding()
             .padding(16.dp)
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -177,6 +185,7 @@ private fun ConfigScreen(
         }
 
         selected?.let { SensorDiagnostic(host = it) }
+        selected?.let { WebApiProbe(host = it) }
     }
 }
 
@@ -223,6 +232,66 @@ private fun SensorDiagnostic(host: SshHost) {
                 style = MaterialTheme.typography.bodySmall,
             )
         }
+    }
+}
+
+/**
+ * JSON endpoints worth looking at, and what they were found to hold on an iLO 3 (firmware 1.94).
+ *
+ * `nic_info` lists each port's number, type and MAC address and nothing else — no link state. The
+ * front panel's network indicators therefore cannot be driven from either interface the app can
+ * reach: IPMI has no NIC sensor and the web API reports no link. `health_summary` is the useful
+ * one, carrying the same per-subsystem verdicts the chassis panel itself shows.
+ */
+private val PROBE_ENDPOINTS = listOf(
+    "/json/nic_info",
+    "/json/health_summary",
+    "/json/overview",
+)
+
+/**
+ * Reports which of those endpoints this iLO actually answers, and with what.
+ *
+ * One login for the whole probe, always logged out: this BMC keeps very few sessions and shares
+ * them with SSH.
+ */
+@Composable
+private fun WebApiProbe(host: SshHost) {
+    val scope = rememberCoroutineScope()
+    var results by remember(host.id) { mutableStateOf<List<IloWebApiClient.ProbeResult>?>(null) }
+    var error by remember(host.id) { mutableStateOf<String?>(null) }
+    var loading by remember(host.id) { mutableStateOf(false) }
+
+    androidx.compose.material3.OutlinedButton(
+        onClick = {
+            loading = true
+            error = null
+            scope.launch {
+                runCatching {
+                    withContext(Dispatchers.IO) {
+                        IloWebApiClient(host).probe(host.password, PROBE_ENDPOINTS)
+                    }
+                }
+                    .onSuccess { results = it }
+                    .onFailure { error = it.message ?: "Échec de la requête" }
+                loading = false
+            }
+        },
+        enabled = !loading && host.password.isNotBlank(),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(if (loading) "Interrogation de l'API iLO…" else "Sonder l'API web de l'iLO")
+    }
+
+    error?.let {
+        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+    }
+    results?.forEach { result ->
+        Text(
+            "${result.path} — ${if (result.ok) "OK" else "refusé"}",
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Text(result.body.take(4000), style = MaterialTheme.typography.bodySmall)
     }
 }
 
