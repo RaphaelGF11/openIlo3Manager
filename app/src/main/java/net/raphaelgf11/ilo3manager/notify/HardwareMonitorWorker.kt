@@ -22,6 +22,11 @@ class HardwareMonitorWorker(
     params: WorkerParameters,
 ) : CoroutineWorker(context, params) {
 
+    companion object {
+        /** Set to check one host immediately, whatever its interval says. */
+        const val KEY_FORCED_HOST_ID = "forced_host_id"
+    }
+
     override suspend fun doWork(): Result {
         NotificationHelper.ensureChannel(applicationContext)
         val hostRepository = HostRepository(applicationContext)
@@ -31,11 +36,20 @@ class HardwareMonitorWorker(
         val hostsById = hostRepository.getHosts().associateBy { it.id }
         val now = System.currentTimeMillis()
 
-        for ((hostId, settings) in notificationSettings.enabledHosts()) {
+        // A forced run comes from the "test" button and targets one host: it ignores both the
+        // per-host interval and the enabled flag, so the check can be tried before committing to it.
+        val forcedHostId = inputData.getString(KEY_FORCED_HOST_ID)
+        val candidates = if (forcedHostId != null) {
+            mapOf(forcedHostId to notificationSettings.settingsFor(forcedHostId))
+        } else {
+            notificationSettings.enabledHosts()
+        }
+
+        for ((hostId, settings) in candidates) {
             val host = hostsById[hostId] ?: continue
             val previous = stateStore.get(hostId)
             val intervalMs = settings.intervalMinutes.coerceAtLeast(1) * 60_000L
-            if (now - previous.lastCheckedAtMillis < intervalMs) continue
+            if (forcedHostId == null && now - previous.lastCheckedAtMillis < intervalMs) continue
 
             when (val result = HardwareMonitorCheck.check(host)) {
                 is HardwareMonitorCheck.Result.Failure -> {

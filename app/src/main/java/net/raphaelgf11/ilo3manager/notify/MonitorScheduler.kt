@@ -19,6 +19,20 @@ object MonitorScheduler {
     private const val UNIQUE_WORK_NAME = "hardware_monitor"
     private const val MIN_INTERVAL_MINUTES = 15
 
+    /**
+     * Runs the check for one host straight away, ignoring its interval.
+     *
+     * The periodic work only reports transitions, so waiting for it proves nothing about whether
+     * notifications are wired up at all. This is what the settings screen's test button calls.
+     */
+    fun runNow(context: Context, hostId: String) {
+        val request = androidx.work.OneTimeWorkRequestBuilder<HardwareMonitorWorker>()
+            .setInputData(androidx.work.workDataOf(HardwareMonitorWorker.KEY_FORCED_HOST_ID to hostId))
+            .build()
+        WorkManager.getInstance(context)
+            .enqueueUniqueWork("hardware_monitor_test", androidx.work.ExistingWorkPolicy.REPLACE, request)
+    }
+
     fun reschedule(context: Context, notificationSettings: NotificationSettingsRepository) {
         val enabled = notificationSettings.enabledHosts()
         val workManager = WorkManager.getInstance(context)

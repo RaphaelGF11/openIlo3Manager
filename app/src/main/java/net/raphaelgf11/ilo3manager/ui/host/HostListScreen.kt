@@ -22,7 +22,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
@@ -69,7 +68,6 @@ import net.raphaelgf11.ilo3manager.ssh.ConnectionState
 import net.raphaelgf11.ilo3manager.ssh.HostSessionStore
 import net.raphaelgf11.ilo3manager.webgateway.WebGatewayManager
 import net.raphaelgf11.ilo3manager.ui.dashboard.StatusDot
-import net.raphaelgf11.ilo3manager.ui.notifications.NotificationSettingsDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -210,14 +208,6 @@ fun HostListScreen(
         }
     }
 
-    notificationDialogHost?.let { host ->
-        NotificationSettingsDialog(
-            hostId = host.id,
-            hostName = host.name,
-            repository = notificationSettingsRepository,
-            onDismiss = { notificationDialogHost = null },
-        )
-    }
 }
 
 /** Slow enough not to hammer several BMCs, fast enough to notice a machine going down. */
@@ -340,9 +330,6 @@ private fun HostRow(
                     Icon(Icons.Filled.Delete, contentDescription = "Supprimer")
                 }
             } else {
-                IconButton(onClick = onOpenNotificationSettings) {
-                    Icon(Icons.Filled.Notifications, contentDescription = "Notifications")
-                }
                 if (active) {
                     IconButton(onClick = onDisconnect) {
                         Icon(Icons.Filled.Close, contentDescription = "Interrompre la connexion")

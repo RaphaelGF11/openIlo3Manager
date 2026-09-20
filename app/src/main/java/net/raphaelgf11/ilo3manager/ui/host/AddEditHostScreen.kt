@@ -53,6 +53,11 @@ import kotlinx.coroutines.withContext
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import net.raphaelgf11.ilo3manager.data.AuthMethod
+import net.raphaelgf11.ilo3manager.data.HostNotificationSettings
+import net.raphaelgf11.ilo3manager.notify.MonitorScheduler
+import net.raphaelgf11.ilo3manager.notify.MonitorStateStore
+import androidx.compose.material3.FilterChip
+import androidx.compose.runtime.LaunchedEffect
 import net.raphaelgf11.ilo3manager.data.HostRepository
 import net.raphaelgf11.ilo3manager.data.HostTab
 import net.raphaelgf11.ilo3manager.data.SshHost
@@ -69,11 +74,12 @@ private const val TAB_GENERAL = "Général"
 private const val TAB_AUTH = "Authentification"
 private const val TAB_IPMI = "IPMI"
 private const val TAB_VPN = "VPN"
+private const val TAB_NOTIF = "Notifications"
 
 /** Credentials and IPMI are meaningless for a gateway-only host, so those tabs disappear. */
 private fun tabsFor(webGatewayOnly: Boolean): List<String> =
     if (webGatewayOnly) listOf(TAB_GENERAL, TAB_VPN)
-    else listOf(TAB_GENERAL, TAB_AUTH, TAB_IPMI, TAB_VPN)
+    else listOf(TAB_GENERAL, TAB_AUTH, TAB_IPMI, TAB_VPN, TAB_NOTIF)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -87,6 +93,12 @@ fun AddEditHostScreen(
     val scope = rememberCoroutineScope()
 
     var selectedTab by remember { mutableIntStateOf(0) }
+
+    val notificationRepository = remember { net.raphaelgf11.ilo3manager.data.NotificationSettingsRepository(context) }
+    var notifSettings by remember {
+        mutableStateOf(existingHost?.let { notificationRepository.settingsFor(it.id) }
+            ?: net.raphaelgf11.ilo3manager.data.HostNotificationSettings())
+    }
 
     var name by remember { mutableStateOf(existingHost?.name ?: "") }
     var hostname by remember { mutableStateOf(existingHost?.hostname ?: "") }
@@ -194,6 +206,10 @@ fun AddEditHostScreen(
                             sshTunnelConfig = sshTunnelConfig,
                         )
                         repository.saveHost(host)
+                        notificationRepository.save(host.id, notifSettings)
+                        // Rescheduling here rather than only at app start: enabling monitoring on a
+                        // host must take effect now, not at the next launch.
+                        net.raphaelgf11.ilo3manager.notify.MonitorScheduler.reschedule(context, notificationRepository)
                         // A session for this host may already be running with the previous record;
                         // without this the edit would only take effect after an app restart.
                         HostSessionStore.updateHost(host)
@@ -290,6 +306,11 @@ fun AddEditHostScreen(
                             setBeepEnabled(false)
                             setCaptureActivity(PortraitCaptureActivity::class.java)
                         }) },
+                    )
+                    TAB_NOTIF -> NotificationsTab(
+                        hostId = existingHost?.id,
+                        settings = notifSettings,
+                        onSettingsChange = { notifSettings = it },
                     )
                     TAB_IPMI -> IpmiTab(
                         enabled = ipmiEnabled,
@@ -846,5 +867,138 @@ private fun VpnTab(
             color = MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.bodySmall,
         )
+    }
+}
+
+/**
+ * Per-host monitoring, moved out of the list's bell dialog.
+ *
+ * The test button exists because the periodic check only reports *transitions*: waiting for it
+ * proves nothing about whether the chain works, since a healthy server that was already healthy is
+ * meant to stay silent. Forcing a check bypasses both the interval and the enabled flag, so the
+ * setup can be tried before being trusted.
+ */
+@Composable
+private fun NotificationsTab(
+    hostId: String?,
+    settings: HostNotificationSettings,
+    onSettingsChange: (HostNotificationSettings) -> Unit,
+) {
+    val context = LocalContext.current
+    val stateStore = remember { MonitorStateStore(context) }
+    var lastChecked by remember { mutableStateOf(hostId?.let { stateStore.get(it).lastCheckedAtMillis } ?: 0L) }
+    var testing by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+            Text("Surveiller ce serveur")
+            Text(
+                "Une vérification périodique en arrière-plan, qui n'alerte que lorsque l'état " +
+                    "change : un serveur sain qui le reste ne produit aucune notification.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Switch(
+            checked = settings.enabled,
+            onCheckedChange = { onSettingsChange(settings.copy(enabled = it)) },
+        )
+    }
+
+    Spacer()
+    Text("Intervalle", style = MaterialTheme.typography.titleSmall)
+    Text(
+        "Le système impose un plancher de 15 minutes aux tâches périodiques ; une valeur plus " +
+            "courte ne sera pas respectée.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(15, 30, 60, 180).forEach { minutes ->
+            FilterChip(
+                selected = settings.intervalMinutes == minutes,
+                onClick = { onSettingsChange(settings.copy(intervalMinutes = minutes)) },
+                label = { Text(if (minutes < 60) "${minutes}min" else "${minutes / 60}h") },
+            )
+        }
+    }
+
+    Spacer()
+    Text("M'alerter en cas de", style = MaterialTheme.typography.titleSmall)
+    NotifToggle("Échec de connexion", settings.notifyOnConnectionFailure) {
+        onSettingsChange(settings.copy(notifyOnConnectionFailure = it))
+    }
+    NotifToggle("État critique", settings.notifyOnCritical) {
+        onSettingsChange(settings.copy(notifyOnCritical = it))
+    }
+    NotifToggle("État dégradé", settings.notifyOnDegraded) {
+        onSettingsChange(settings.copy(notifyOnDegraded = it))
+    }
+    NotifToggle("Serveur éteint", settings.notifyOnPoweredOff) {
+        onSettingsChange(settings.copy(notifyOnPoweredOff = it))
+    }
+    NotifToggle("Serveur allumé", settings.notifyOnPoweredOn) {
+        onSettingsChange(settings.copy(notifyOnPoweredOn = it))
+    }
+
+    Spacer()
+    Text(
+        "Dernière vérification : " + if (lastChecked > 0) {
+            java.text.DateFormat.getDateTimeInstance(
+                java.text.DateFormat.SHORT,
+                java.text.DateFormat.SHORT,
+            ).format(java.util.Date(lastChecked))
+        } else {
+            "jamais"
+        },
+        style = MaterialTheme.typography.bodySmall,
+    )
+
+    if (hostId == null) {
+        Text(
+            "Enregistrez le serveur avant de pouvoir tester.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+    } else {
+        OutlinedButton(
+            onClick = {
+                testing = true
+                MonitorScheduler.runNow(context, hostId)
+            },
+            enabled = !testing,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(if (testing) "Vérification en cours…" else "Tester maintenant")
+        }
+    }
+
+    // The worker writes the timestamp when it finishes; polling briefly is enough to pick it up
+    // without wiring an observer through WorkManager for a button pressed once in a while.
+    LaunchedEffect(testing) {
+        if (!testing || hostId == null) return@LaunchedEffect
+        repeat(30) {
+            kotlinx.coroutines.delay(1_000)
+            val stamp = stateStore.get(hostId).lastCheckedAtMillis
+            if (stamp != lastChecked) {
+                lastChecked = stamp
+                testing = false
+                return@LaunchedEffect
+            }
+        }
+        testing = false
+    }
+}
+
+@Composable
+private fun NotifToggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().selectable(selected = checked, onClick = { onChange(!checked) }),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(label, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onChange)
     }
 }
