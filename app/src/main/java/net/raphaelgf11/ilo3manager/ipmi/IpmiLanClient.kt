@@ -25,7 +25,22 @@ private const val RMCP_PLUS_HEADER_SIZE = 16
 private const val NET_FN_CHASSIS = 0x00
 private const val NET_FN_APP = 0x06
 
-private const val PRIVILEGE_ADMINISTRATOR: Byte = 0x04
+/**
+ * Privilege level requested when opening the session.
+ *
+ * Administrator forces the iLO account to hold every privilege, which is more than this app needs:
+ * Operator already covers power control and the locator LED, and User is enough to read state.
+ * Asking for the least that works avoids granting a management account full rights for a dashboard.
+ */
+enum class IpmiPrivilege(val level: Int, val label: String) {
+    USER(2, "Lecture seule"),
+    OPERATOR(3, "Opérateur"),
+    ADMINISTRATOR(4, "Administrateur"),
+    ;
+
+    /** Name-only lookup (bit 4) combined with the level, as RAKP expects it. */
+    val rakpByte: Byte get() = (0x10 or level).toByte()
+}
 
 /** Retransmissions before giving up on a datagram. */
 private const val RETRY_ATTEMPTS = 3
@@ -78,6 +93,7 @@ class IpmiLanClient(
     private val port: Int,
     private val username: String,
     private val password: String,
+    private val privilege: IpmiPrivilege = IpmiPrivilege.ADMINISTRATOR,
 ) {
     private var socket: DatagramSocket? = null
     private var address: InetAddress? = null
@@ -90,6 +106,16 @@ class IpmiLanClient(
     private var outboundSeq: Int = 1
     private var rqSeq: Int = 0
 
+    /**
+     * Distinguishes one session-setup message from the next.
+     *
+     * UDP has no request/response pairing, so a retransmission can leave the BMC answering twice;
+     * without a tag the late reply to the previous message is read as the answer to the current
+     * one, and the mismatched payload then fails far from the cause. Only shows up under latency,
+     * which is why it appeared through a tunnel and never on a local network.
+     */
+    private var messageTag: Int = 0
+
     private val random = SecureRandom()
 
     fun open() {
@@ -99,26 +125,36 @@ class IpmiLanClient(
         consoleSessionId = random.nextInt().let { if (it == 0) 1 else it }
         val consoleRandom = ByteArray(16).also { random.nextBytes(it) }
 
-        val openResp = payloadOf(exchangePreSession(buildOpenSessionRequest()))
+        val openTag = nextTag()
+        val openResp = payloadOf(exchangePreSession(buildOpenSessionRequest(openTag), openTag))
         // Open Session Response payload: tag(1) status(1) privilege(1) reserved(1)
         // console session id(4) managed system session id(4) ...
+        checkRmcpStatus(openResp, "ouverture de session")
         managedSystemSessionId = readIntLe(openResp, 8)
 
-        val rakp1 = buildRakpMessage1(consoleRandom)
-        val rakp2 = payloadOf(exchangePreSession(rakp1))
+        val rakp1Tag = nextTag()
+        val rakp1 = buildRakpMessage1(consoleRandom, rakp1Tag)
+        val rakp2 = payloadOf(exchangePreSession(rakp1, rakp1Tag))
         // RAKP2 payload: tag(1) status(1) reserved(2) console session id(4)
-        // BMC random(16) BMC GUID(16) key exchange auth code(20)
+        // BMC random(16) BMC GUID(16) key exchange auth code(20).
+        // A refusal carries only the first eight bytes, so the status has to be read before
+        // anything is sliced out of it — otherwise a clear rejection surfaces as an opaque
+        // "toIndex is greater than size" from the array copy below.
+        checkRmcpStatus(rakp2, "authentification")
+        if (rakp2.size < 40) {
+            throw IOException("Réponse RAKP2 tronquée (${rakp2.size} octets) : l'iLO a refusé la session.")
+        }
         val bmcRandom = rakp2.copyOfRange(8, 24)
         val bmcGuid = rakp2.copyOfRange(24, 40)
 
         val kUid = kuid()
-        sik = hmacSha1(kUid, concat(consoleRandom, bmcRandom, byteArrayOf(0x14.toByte(), username.length.toByte()), username.toByteArray(Charsets.US_ASCII)))
+        sik = hmacSha1(kUid, concat(consoleRandom, bmcRandom, byteArrayOf(privilege.rakpByte, username.length.toByte()), username.toByteArray(Charsets.US_ASCII)))
         k1 = hmacSha1(sik, ByteArray(20) { 0x01 })
         k2 = hmacSha1(sik, ByteArray(20) { 0x02 })
 
         val rakp2AuthData = concat(
             intLe(consoleSessionId), intLe(managedSystemSessionId), consoleRandom, bmcRandom, bmcGuid,
-            byteArrayOf(0x14.toByte(), username.length.toByte()), username.toByteArray(Charsets.US_ASCII),
+            byteArrayOf(privilege.rakpByte, username.length.toByte()), username.toByteArray(Charsets.US_ASCII),
         )
         val expected = hmacSha1(kUid, rakp2AuthData)
         val actual = rakp2.copyOfRange(40, minOf(rakp2.size, 60))
@@ -128,13 +164,39 @@ class IpmiLanClient(
         }
 
         val rakp3AuthData = concat(
-            bmcRandom, intLe(consoleSessionId), byteArrayOf(0x14.toByte(), username.length.toByte()),
+            bmcRandom, intLe(consoleSessionId), byteArrayOf(privilege.rakpByte, username.length.toByte()),
             username.toByteArray(Charsets.US_ASCII),
         )
         val rakp3AuthCode = hmacSha1(kUid, rakp3AuthData)
-        exchangePreSession(buildRakpMessage3(rakp3AuthCode))
+        val rakp3Tag = nextTag()
+        exchangePreSession(buildRakpMessage3(rakp3AuthCode, rakp3Tag), rakp3Tag)
 
         raiseSessionPrivilege()
+    }
+
+    /**
+     * Fails with the BMC's own reason when a session-setup message reports an error.
+     *
+     * These replies carry a status byte that says exactly why a session was refused; without
+     * reading it the only symptom is a malformed short packet much later.
+     */
+    private fun checkRmcpStatus(payload: ByteArray, stage: String) {
+        if (payload.size < 2) throw IOException("Réponse IPMI vide pendant l'$stage.")
+        val status = payload[1].toInt() and 0xFF
+        if (status == 0x00) return
+        val reason = when (status) {
+            0x01 -> "ressources insuffisantes sur l'iLO (trop de sessions IPMI ouvertes ?)"
+            0x02 -> "identifiant de session invalide"
+            0x08 -> "session inactive"
+            0x09, 0x0A -> "niveau de privilège refusé pour cet utilisateur"
+            0x0B -> "ressources insuffisantes pour ce niveau de privilège"
+            0x0C -> "longueur de nom d'utilisateur invalide"
+            0x0D -> "utilisateur inconnu ou non autorisé en IPMI"
+            0x0F -> "code d'authentification invalide (mot de passe incorrect ?)"
+            0x11 -> "aucune suite de chiffrement commune"
+            else -> "code 0x%02x".format(status)
+        }
+        throw IOException("L'iLO a refusé l'$stage : $reason.")
     }
 
     /**
@@ -146,7 +208,7 @@ class IpmiLanClient(
      * read power state fine but every power action was refused.
      */
     private fun raiseSessionPrivilege() {
-        sendCommand(netFn = NET_FN_APP, cmd = 0x3B, data = byteArrayOf(PRIVILEGE_ADMINISTRATOR))
+        sendCommand(netFn = NET_FN_APP, cmd = 0x3B, data = byteArrayOf(privilege.level.toByte()))
     }
 
     fun getPowerState(): ChassisPowerState = getChassisStatus().power
@@ -265,10 +327,12 @@ class IpmiLanClient(
 
     // ---- Session establishment payloads ----
 
-    private fun buildOpenSessionRequest(): ByteArray {
+    private fun nextTag(): Int = (++messageTag) and 0xFF
+
+    private fun buildOpenSessionRequest(tag: Int): ByteArray {
         val payload = ByteBuffer.allocate(32).order(ByteOrder.LITTLE_ENDIAN).apply {
-            put(0x00) // message tag
-            put(0x04) // requested max privilege: Administrator
+            put(tag.toByte())
+            put(privilege.level.toByte()) // requested maximum privilege
             put(0x00); put(0x00) // reserved
             putInt(consoleSessionId)
             // Authentication payload
@@ -281,13 +345,13 @@ class IpmiLanClient(
         return wrapPreSessionPayload(0x10, payload)
     }
 
-    private fun buildRakpMessage1(consoleRandom: ByteArray): ByteArray {
+    private fun buildRakpMessage1(consoleRandom: ByteArray, tag: Int): ByteArray {
         val userBytes = username.toByteArray(Charsets.US_ASCII)
         val payload = ByteBuffer.allocate(4 + 4 + 16 + 1 + 2 + 1 + userBytes.size).order(ByteOrder.LITTLE_ENDIAN).apply {
-            put(0x00); put(0x00); put(0x00); put(0x00) // message tag + reserved
+            put(tag.toByte()); put(0x00); put(0x00); put(0x00) // message tag + reserved
             putInt(managedSystemSessionId)
             put(consoleRandom)
-            put(0x14.toByte()) // name-only lookup + Administrator privilege
+            put(privilege.rakpByte) // name-only lookup + requested level
             put(0x00); put(0x00) // reserved
             put(userBytes.size.toByte())
             put(userBytes)
@@ -295,9 +359,9 @@ class IpmiLanClient(
         return wrapPreSessionPayload(0x12, payload)
     }
 
-    private fun buildRakpMessage3(authCode: ByteArray): ByteArray {
+    private fun buildRakpMessage3(authCode: ByteArray, tag: Int): ByteArray {
         val payload = ByteBuffer.allocate(4 + 4 + authCode.size).order(ByteOrder.LITTLE_ENDIAN).apply {
-            put(0x00) // message tag
+            put(tag.toByte())
             put(0x00) // status = success
             put(0x00); put(0x00) // reserved
             putInt(managedSystemSessionId)
@@ -321,7 +385,8 @@ class IpmiLanClient(
 
     // ---- Transport ----
 
-    private fun exchangePreSession(request: ByteArray): ByteArray = sendAndReceive(request)
+    private fun exchangePreSession(request: ByteArray, expectedTag: Int): ByteArray =
+        sendAndReceive(request, expectedTag)
 
     /**
      * Sends a datagram and waits for the reply, retransmitting if none arrives.
@@ -331,18 +396,27 @@ class IpmiLanClient(
      * first has something to send, and the packet that triggers it is dropped — without a retry
      * the very first IPMI exchange after connecting always failed.
      */
-    private fun sendAndReceive(request: ByteArray): ByteArray {
+    private fun sendAndReceive(request: ByteArray, expectedTag: Int? = null): ByteArray {
         var lastError: Exception? = null
         repeat(RETRY_ATTEMPTS) {
             try {
                 send(request)
-                return receive()
+                // Discard replies left over from an earlier retransmission rather than treating
+                // the first datagram to arrive as the answer.
+                while (true) {
+                    val response = receive()
+                    if (expectedTag == null || tagOf(response) == expectedTag) return response
+                }
             } catch (e: java.net.SocketTimeoutException) {
                 lastError = e
             }
         }
         throw lastError ?: IOException("Aucune réponse IPMI")
     }
+
+    /** Message tag of a session-setup reply: first byte of the payload. */
+    private fun tagOf(packet: ByteArray): Int? =
+        if (packet.size > RMCP_PLUS_HEADER_SIZE) packet[RMCP_PLUS_HEADER_SIZE].toInt() and 0xFF else null
 
     private fun send(data: ByteArray) {
         val sock = socket ?: throw IOException("Session IPMI non ouverte")

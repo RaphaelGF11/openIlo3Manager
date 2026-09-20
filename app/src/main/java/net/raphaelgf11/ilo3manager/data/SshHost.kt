@@ -1,5 +1,6 @@
 package net.raphaelgf11.ilo3manager.data
 
+import net.raphaelgf11.ilo3manager.ipmi.IpmiPrivilege
 import java.util.UUID
 
 enum class AuthMethod {
@@ -25,6 +26,12 @@ data class SshHost(
      */
     val ipmiEnabled: Boolean = false,
     val ipmiPort: Int = 623,
+    /**
+     * Privilege requested when opening an IPMI session. Operator is enough for power control and
+     * the locator LED, so asking for Administrator would needlessly require granting the iLO
+     * account every privilege.
+     */
+    val ipmiPrivilege: IpmiPrivilege = IpmiPrivilege.OPERATOR,
     /** Set once the user has declined the offer to enable IPMI, so it isn't proposed again. */
     val ipmiPromptDismissed: Boolean = false,
     /**

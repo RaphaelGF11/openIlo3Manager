@@ -4,6 +4,11 @@ Application Android pour administrer un serveur HP ProLiant via son iLO3 (Integr
 
 > **Ce projet est publié tel quel, au cas où il pourrait être utile à quelqu'un d'autre.** Il a été entièrement conçu et développé par une IA (Claude), à la demande et sous la supervision de son auteur, qui n'a pas écrit une ligne de code lui-même. Utilisez-le à vos risques.
 
+## Documentation
+
+- **[Prise en main](TUTORIAL.md)** — mettre en place un premier serveur en dix minutes
+- [Documentation complète](doc/README.md) — configuration, fonctionnalités, tunnels, sécurité, dépannage, architecture
+
 ## Pourquoi ce projet
 
 Les iLO de génération 3 (HP ProLiant Gen6/Gen7) n'acceptent que du TLS 1.0/1.1 avec des suites obsolètes (RC4, 3DES) sur leur interface web, et un SSH configuré avec des algorithmes tout aussi anciens (`diffie-hellman-group1-sha1`, `ssh-dss`). Aucun navigateur ni client SSH récent ne s'y connecte directement. Cette application embarque tout le nécessaire pour continuer à administrer ce matériel depuis un téléphone Android.

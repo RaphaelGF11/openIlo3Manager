@@ -308,7 +308,7 @@ class ControlSessionController(private var host: SshHost) {
         // IPMI is UDP, so it only reaches the host through a tunnel that carries UDP — WireGuard
         // does, an SSH jump host does not (which is why usesIpmi rules that case out entirely).
         val endpoint = HostTunnelManager.endpointFor(host, host.ipmiPort, udp = true)
-        val ipmi = IpmiLanClient(endpoint.host, endpoint.port, host.username, host.password)
+        val ipmi = IpmiLanClient(endpoint.host, endpoint.port, host.username, host.password, host.ipmiPrivilege)
         return try {
             ipmi.open()
             block(ipmi)

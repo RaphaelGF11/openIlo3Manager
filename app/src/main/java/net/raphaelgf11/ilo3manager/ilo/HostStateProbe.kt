@@ -21,7 +21,7 @@ object HostStateProbe {
         if (!isPollable(host)) return HostIndicator.UNKNOWN
         return try {
             val endpoint = HostTunnelManager.endpointFor(host, host.ipmiPort, udp = true)
-            val ipmi = IpmiLanClient(endpoint.host, endpoint.port, host.username, host.password)
+            val ipmi = IpmiLanClient(endpoint.host, endpoint.port, host.username, host.password, host.ipmiPrivilege)
             try {
                 ipmi.open()
                 HostIndicator.from(ipmi.getChassisStatus())

@@ -3,6 +3,7 @@ package net.raphaelgf11.ilo3manager.backup
 import net.raphaelgf11.ilo3manager.data.AuthMethod
 import net.raphaelgf11.ilo3manager.data.SshHost
 import net.raphaelgf11.ilo3manager.data.VpnType
+import net.raphaelgf11.ilo3manager.ipmi.IpmiPrivilege
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -43,6 +44,7 @@ object BackupPayload {
         put("publicKey", host.publicKey)
         put("ipmiEnabled", host.ipmiEnabled)
         put("ipmiPort", host.ipmiPort)
+        put("ipmiPrivilege", host.ipmiPrivilege.name)
         put("ipmiPromptDismissed", host.ipmiPromptDismissed)
         put("showStateInList", host.showStateInList)
         put("hardwareOverIpmi", host.hardwareOverIpmi)
@@ -66,6 +68,8 @@ object BackupPayload {
         publicKey = o.optString("publicKey", ""),
         ipmiEnabled = o.optBoolean("ipmiEnabled", false),
         ipmiPort = o.optInt("ipmiPort", 623),
+        ipmiPrivilege = runCatching { IpmiPrivilege.valueOf(o.optString("ipmiPrivilege")) }
+            .getOrDefault(IpmiPrivilege.OPERATOR),
         ipmiPromptDismissed = o.optBoolean("ipmiPromptDismissed", false),
         showStateInList = o.optBoolean("showStateInList", false),
         hardwareOverIpmi = o.optBoolean("hardwareOverIpmi", false),

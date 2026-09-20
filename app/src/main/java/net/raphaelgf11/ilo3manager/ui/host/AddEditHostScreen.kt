@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -39,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
@@ -53,6 +55,7 @@ import net.raphaelgf11.ilo3manager.data.AuthMethod
 import net.raphaelgf11.ilo3manager.data.HostRepository
 import net.raphaelgf11.ilo3manager.data.SshHost
 import net.raphaelgf11.ilo3manager.data.VpnType
+import net.raphaelgf11.ilo3manager.ipmi.IpmiPrivilege
 import net.raphaelgf11.ilo3manager.vpn.SshTunnelConfig
 import net.raphaelgf11.ilo3manager.vpn.WireGuardConfigParser
 import net.raphaelgf11.ilo3manager.ssh.HostSessionStore
@@ -91,6 +94,7 @@ fun AddEditHostScreen(
     var ipmiPort by remember { mutableStateOf((existingHost?.ipmiPort ?: 623).toString()) }
     var showStateInList by remember { mutableStateOf(existingHost?.showStateInList ?: false) }
     var hardwareOverIpmi by remember { mutableStateOf(existingHost?.hardwareOverIpmi ?: false) }
+    var ipmiPrivilege by remember { mutableStateOf(existingHost?.ipmiPrivilege ?: IpmiPrivilege.OPERATOR) }
     var vpnType by remember { mutableStateOf(existingHost?.vpnType ?: VpnType.NONE) }
     var wireGuardConfig by remember { mutableStateOf(existingHost?.wireGuardConfig ?: "") }
     var sshTunnelConfig by remember { mutableStateOf(existingHost?.sshTunnelConfig ?: "") }
@@ -156,6 +160,7 @@ fun AddEditHostScreen(
                             ipmiPromptDismissed = existingHost?.ipmiPromptDismissed ?: false,
                             showStateInList = showStateInList && ipmiEnabled,
                             hardwareOverIpmi = hardwareOverIpmi && ipmiEnabled,
+                            ipmiPrivilege = ipmiPrivilege,
                             vpnType = vpnType,
                             wireGuardConfig = wireGuardConfig,
                             sshTunnelConfig = sshTunnelConfig,
@@ -256,6 +261,8 @@ fun AddEditHostScreen(
                         onShowStateInListChange = { showStateInList = it },
                         hardwareOverIpmi = hardwareOverIpmi,
                         onHardwareOverIpmiChange = { hardwareOverIpmi = it },
+                        privilege = ipmiPrivilege,
+                        onPrivilegeChange = { ipmiPrivilege = it },
                         port = ipmiPort,
                         onPortChange = { ipmiPort = it },
                         authMethod = authMethod,
@@ -337,16 +344,14 @@ private fun AuthenticationTab(
 
     Text("Méthode d'authentification")
     AuthMethod.entries.forEach { method ->
-        Row {
-            RadioButton(selected = authMethod == method, onClick = { onAuthMethodChange(method) })
-            Text(
-                text = when (method) {
-                    AuthMethod.PASSWORD -> "Mot de passe"
-                    AuthMethod.PRIVATE_KEY -> "Clé privée"
-                },
-                modifier = Modifier.padding(top = 12.dp),
-            )
-        }
+        RadioRow(
+            selected = authMethod == method,
+            label = when (method) {
+                AuthMethod.PASSWORD -> "Mot de passe"
+                AuthMethod.PRIVATE_KEY -> "Clé privée"
+            },
+            onSelect = { onAuthMethodChange(method) },
+        )
     }
 
     when (authMethod) {
@@ -432,6 +437,8 @@ private fun IpmiTab(
     onShowStateInListChange: (Boolean) -> Unit,
     hardwareOverIpmi: Boolean,
     onHardwareOverIpmiChange: (Boolean) -> Unit,
+    privilege: IpmiPrivilege,
+    onPrivilegeChange: (IpmiPrivilege) -> Unit,
     port: String,
     onPortChange: (String) -> Unit,
     authMethod: AuthMethod,
@@ -461,6 +468,22 @@ private fun IpmiTab(
     }
 
     if (enabled) {
+        Spacer()
+        Text("Niveau de privilège demandé")
+        Text(
+            "L'iLO n'accorde le niveau Administrateur qu'à un compte détenant tous les " +
+                "privilèges. Opérateur suffit pour l'alimentation et la LED UID, et Lecture seule " +
+                "pour consulter l'état sans rien pouvoir modifier.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        IpmiPrivilege.entries.forEach { candidate ->
+            RadioRow(
+                selected = privilege == candidate,
+                label = candidate.label,
+                onSelect = { onPrivilegeChange(candidate) },
+            )
+        }
+
         Spacer()
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -525,6 +548,28 @@ private fun IpmiTab(
     }
 }
 
+/**
+ * One entry of a radio group, selectable from anywhere on the row.
+ *
+ * The whole row carries the selection rather than the button alone: a label that does nothing when
+ * tapped is a small trap on a touch screen, and `selectable` also merges the row into a single
+ * accessibility node announced as a radio button, which separate clickables would not do.
+ */
+@Composable
+private fun RadioRow(selected: Boolean, label: String, onSelect: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(selected = selected, onClick = onSelect, role = Role.RadioButton)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Null: the row already handles the click, and a nested one would double the semantics.
+        RadioButton(selected = selected, onClick = null)
+        Text(label, modifier = Modifier.padding(start = 8.dp))
+    }
+}
+
 @Composable
 private fun Spacer() {
     androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(top = 4.dp))
@@ -543,17 +588,15 @@ private fun VpnTab(
 ) {
     Text("Tunnel")
     VpnType.entries.forEach { candidate ->
-        Row {
-            RadioButton(selected = type == candidate, onClick = { onTypeChange(candidate) })
-            Text(
-                text = when (candidate) {
-                    VpnType.NONE -> "Aucun (accès direct)"
-                    VpnType.WIREGUARD -> "WireGuard"
-                    VpnType.SSH_TUNNEL -> "Rebond SSH (port forwarding)"
-                },
-                modifier = Modifier.padding(top = 12.dp),
-            )
-        }
+        RadioRow(
+            selected = type == candidate,
+            label = when (candidate) {
+                VpnType.NONE -> "Aucun (accès direct)"
+                VpnType.WIREGUARD -> "WireGuard"
+                VpnType.SSH_TUNNEL -> "Rebond SSH (port forwarding)"
+            },
+            onSelect = { onTypeChange(candidate) },
+        )
     }
 
     if (type == VpnType.SSH_TUNNEL) {
