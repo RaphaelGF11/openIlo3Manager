@@ -375,22 +375,27 @@ object FrontPanelRenderer {
             style = Paint.Style.FILL
             color = withAlpha(SILKSCREEN, 0xC8)
         }
-        // Four petals joined at a filled centre, with a clear notch between each: set any further
-        // apart they read as four dots, any closer and they merge into a blob. Both are wrong.
-        val lobeR = 6.6f
-        val lobeOffset = 7.8f
-        val clover = Path()
+        // An impeller, not a clover: each blade is a teardrop, broad at the rim and tapering into
+        // the hub, and offset in the direction of rotation. Four symmetric lobes read as a flower.
+        val hubR = 2.9f
+        val tipOffset = 9.4f
+        val tipR = 5.7f
+        val sweep = 15f
         for (i in 0 until 4) {
             val base = i * 90f + 45f
-            clover.addCircle(
-                polarX(cx, lobeOffset, base),
-                polarY(cy, lobeOffset, base),
-                lobeR,
-                Path.Direction.CW,
-            )
+            val tipX = polarX(cx, tipOffset, base + sweep)
+            val tipY = polarY(cy, tipOffset, base + sweep)
+            canvas.drawCircle(tipX, tipY, tipR, blade)
+            // A narrow neck: widen it and the four gaps close up, turning the impeller into a blob.
+            val neck = Path().apply {
+                moveTo(polarX(cx, hubR, base - 14f), polarY(cy, hubR, base - 14f))
+                lineTo(tipX, tipY)
+                lineTo(polarX(cx, hubR, base + 26f), polarY(cy, hubR, base + 26f))
+                close()
+            }
+            canvas.drawPath(neck, blade)
         }
-        clover.addCircle(cx, cy, 4.6f, Path.Direction.CW)
-        canvas.drawPath(clover, blade)
+        canvas.drawCircle(cx, cy, hubR, blade)
     }
 
     private fun polarX(cx: Float, radius: Float, degrees: Float): Float =
