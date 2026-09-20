@@ -58,6 +58,7 @@ class HostRepository(context: Context) {
         put("hostname", host.hostname)
         put("port", host.port)
         put("httpsPort", host.httpsPort)
+        put("alwaysOpenVsp", host.alwaysOpenVsp)
         put("username", host.username)
         put("authMethod", host.authMethod.name)
         put("password", host.password)
@@ -82,6 +83,7 @@ class HostRepository(context: Context) {
         hostname = o.getString("hostname"),
         port = o.getInt("port"),
         httpsPort = o.optInt("httpsPort", 443),
+        alwaysOpenVsp = o.optBoolean("alwaysOpenVsp", false),
         username = o.getString("username"),
         authMethod = AuthMethod.valueOf(o.getString("authMethod")),
         password = o.optString("password", ""),

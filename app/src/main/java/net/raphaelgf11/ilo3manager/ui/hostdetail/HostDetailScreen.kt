@@ -68,6 +68,13 @@ fun HostDetailScreen(
     var ipmiBusy by remember { mutableStateOf(false) }
     var ipmiError by remember { mutableStateOf<String?>(null) }
 
+    // The serial console has its own SSH session, so opening the control one does not help it.
+    // Started here rather than in the VSP tab: the point is to have it ready before the tab is
+    // opened. Only on entering a host, never from the list.
+    LaunchedEffect(host.id, host.alwaysOpenVsp) {
+        if (host.alwaysOpenVsp) vspSession.connectIfNeeded()
+    }
+
     LaunchedEffect(controlState, host.ipmiEnabled, host.ipmiPromptDismissed) {
         if (controlState == ConnectionState.CONNECTED && !host.ipmiEnabled && !host.ipmiPromptDismissed) {
             showIpmiSuggestion = true

@@ -82,6 +82,7 @@ fun AddEditHostScreen(
     var hostname by remember { mutableStateOf(existingHost?.hostname ?: "") }
     var port by remember { mutableStateOf((existingHost?.port ?: 22).toString()) }
     var httpsPort by remember { mutableStateOf((existingHost?.httpsPort ?: 443).toString()) }
+    var alwaysOpenVsp by remember { mutableStateOf(existingHost?.alwaysOpenVsp ?: false) }
     var username by remember { mutableStateOf(existingHost?.username ?: "") }
     var authMethod by remember { mutableStateOf(existingHost?.authMethod ?: AuthMethod.PASSWORD) }
     // Secrets are never re-displayed when editing an existing host: these start blank and, if
@@ -150,6 +151,7 @@ fun AddEditHostScreen(
                             hostname = hostname,
                             port = port.toIntOrNull() ?: 22,
                             httpsPort = httpsPort.toIntOrNull() ?: 443,
+                            alwaysOpenVsp = alwaysOpenVsp,
                             username = username,
                             authMethod = authMethod,
                             password = password.ifBlank { existingHost?.password ?: "" },
@@ -216,6 +218,8 @@ fun AddEditHostScreen(
                         onPortChange = { port = it },
                         httpsPort = httpsPort,
                         onHttpsPortChange = { httpsPort = it },
+                        alwaysOpenVsp = alwaysOpenVsp,
+                        onAlwaysOpenVspChange = { alwaysOpenVsp = it },
                     )
                     1 -> AuthenticationTab(
                         isNewHost = existingHost == null,
@@ -289,6 +293,8 @@ private fun GeneralTab(
     onPortChange: (String) -> Unit,
     httpsPort: String,
     onHttpsPortChange: (String) -> Unit,
+    alwaysOpenVsp: Boolean,
+    onAlwaysOpenVspChange: (Boolean) -> Unit,
 ) {
     OutlinedTextField(
         value = name,
@@ -319,6 +325,23 @@ private fun GeneralTab(
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         modifier = Modifier.fillMaxWidth(),
     )
+    Spacer()
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+            Text("Ouvrir le port série (VSP) à l'ouverture")
+            Text(
+                "La console série utilise sa propre session SSH, distincte de celle des autres " +
+                    "onglets : l'ouvrir d'avance rend l'onglet VSP immédiatement utilisable. " +
+                    "Elle consomme en contrepartie une des rares sessions simultanées de l'iLO.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Switch(checked = alwaysOpenVsp, onCheckedChange = onAlwaysOpenVspChange)
+    }
 }
 
 @Composable

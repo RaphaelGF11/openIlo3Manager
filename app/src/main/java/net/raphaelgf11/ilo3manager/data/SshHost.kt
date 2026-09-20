@@ -14,6 +14,12 @@ data class SshHost(
     val hostname: String,
     val port: Int = 22,
     val httpsPort: Int = 443,
+    /**
+     * Open the serial console session as soon as the host is opened. It is a second SSH session,
+     * independent of the control one, so pre-opening it is a separate choice — and one that costs
+     * a slot in the very small pool an iLO3 allows.
+     */
+    val alwaysOpenVsp: Boolean = false,
     val username: String,
     val authMethod: AuthMethod,
     val password: String = "",

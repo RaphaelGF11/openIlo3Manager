@@ -36,6 +36,7 @@ object BackupPayload {
         put("hostname", host.hostname)
         put("port", host.port)
         put("httpsPort", host.httpsPort)
+        put("alwaysOpenVsp", host.alwaysOpenVsp)
         put("username", host.username)
         put("authMethod", host.authMethod.name)
         put("password", host.password)
@@ -60,6 +61,7 @@ object BackupPayload {
         hostname = o.optString("hostname", ""),
         port = o.optInt("port", 22),
         httpsPort = o.optInt("httpsPort", 443),
+        alwaysOpenVsp = o.optBoolean("alwaysOpenVsp", false),
         username = o.optString("username", ""),
         authMethod = runCatching { AuthMethod.valueOf(o.optString("authMethod")) }
             .getOrDefault(AuthMethod.PASSWORD),
