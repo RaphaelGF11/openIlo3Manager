@@ -26,6 +26,15 @@ class IloCliClient {
     val isConnected: Boolean
         get() = session?.isConnected == true
 
+    /**
+     * What the other end announced itself as, such as `SSH-2.0-RomSShell_4.62` for an iLO 3.
+     *
+     * Not used to decide anything — an implementation string is too brittle for that — but worth
+     * quoting back when the app has concluded it is not talking to an iLO.
+     */
+    val serverVersion: String
+        get() = session?.serverVersion.orEmpty()
+
     fun connect(host: SshHost) {
         session = IloSessionFactory.connect(host)
     }

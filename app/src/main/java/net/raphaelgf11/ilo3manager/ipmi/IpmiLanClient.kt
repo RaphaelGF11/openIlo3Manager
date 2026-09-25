@@ -118,6 +118,17 @@ class IpmiLanClient(
 
     private val random = SecureRandom()
 
+    /**
+     * The highest privilege the BMC will grant this account, read from the Open Session Response.
+     *
+     * The BMC answers with a ceiling of its own rather than echoing what was asked: an account
+     * without the matching iLO privileges is held lower, silently. Knowing the ceiling is what lets
+     * a host be configured for the level it can actually reach instead of one that fails later, on
+     * a command rather than at login.
+     */
+    var grantedPrivilege: IpmiPrivilege? = null
+        private set
+
     fun open() {
         address = InetAddress.getByName(host)
         socket = DatagramSocket().apply { soTimeout = 2_500 }
@@ -131,6 +142,8 @@ class IpmiLanClient(
         // console session id(4) managed system session id(4) ...
         checkRmcpStatus(openResp, "ouverture de session")
         managedSystemSessionId = readIntLe(openResp, 8)
+        // Byte 2 is the ceiling the BMC grants, which can be lower than the one requested.
+        grantedPrivilege = IpmiPrivilege.entries.firstOrNull { it.level == (openResp[2].toInt() and 0x0F) }
 
         val rakp1Tag = nextTag()
         val rakp1 = buildRakpMessage1(consoleRandom, rakp1Tag)
