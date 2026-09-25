@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The LAN symbol as the DL380's own silkscreen draws it, and as the front-panel widget
+    reproduces it in FrontPanelRenderer.drawNicGlyph: a bus with a node at its left end, one
+    terminal above the middle and two below.
+
+    Redrawn here rather than shared with the widget because that one paints onto a Canvas at
+    panel scale; this is the same shape fitted to a 24dp icon, symmetric where the panel is not.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- The bus, and the node sitting on its left end. -->
+    <path
+        android:pathData="M3.5,12 L20.5,12"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M3.6,10.2 A1.8,1.8 0 1,0 3.6,13.8 A1.8,1.8 0 1,0 3.6,10.2 Z"
+        android:fillColor="#FFFFFFFF" />
+
+    <!-- Terminal above the middle. -->
+    <path
+        android:pathData="M12,12 L12,8.4"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.7" />
+    <path
+        android:pathData="M8.8,4 L15.2,4 L15.2,8.4 L8.8,8.4 Z"
+        android:fillColor="#FFFFFFFF" />
+
+    <!-- Two terminals below, either side of it. -->
+    <path
+        android:pathData="M7.2,12 L7.2,15.6"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.7" />
+    <path
+        android:pathData="M4,15.6 L10.4,15.6 L10.4,20 L4,20 Z"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M16.8,12 L16.8,15.6"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.7" />
+    <path
+        android:pathData="M13.6,15.6 L20,15.6 L20,20 L13.6,20 Z"
+        android:fillColor="#FFFFFFFF" />
+</vector>
