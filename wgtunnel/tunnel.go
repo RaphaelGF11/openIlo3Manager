@@ -34,9 +34,12 @@ const protocolICMP = 1
 
 // Tunnel is a running WireGuard peer plus the local forwarders opened through it.
 type Tunnel struct {
-	tnet      *netstack.Net
-	dev       *device.Device
-	mu        sync.Mutex
+	tnet  *netstack.Net
+	dev   *device.Device
+	addrs []netip.Addr
+	mu    sync.Mutex
+	// listeners holds every socket opened on the tunnel's behalf, in both directions, so Close
+	// can tear them all down.
 	listeners []io.Closer
 	closed    bool
 }
@@ -77,7 +80,7 @@ func Start(ipcConfig string, localAddresses string, dnsServers string, mtu int) 
 		return nil, fmt.Errorf("démarrage du tunnel : %w", err)
 	}
 
-	return &Tunnel{tnet: tnet, dev: dev}, nil
+	return &Tunnel{tnet: tnet, dev: dev, addrs: addrs}, nil
 }
 
 // ForwardTCP listens on a free local TCP port and relays every connection to host:port through the
@@ -174,6 +177,137 @@ func (t *Tunnel) ForwardUDP(host string, port int) (int, error) {
 	return local.LocalAddr().(*net.UDPAddr).Port, nil
 }
 
+// ReverseTCP accepts connections arriving inside the tunnel on tunnelPort and relays each one to
+// 127.0.0.1:localPort, where Kotlin runs an ordinary server.
+//
+// This is ForwardTCP turned around, and it is what lets the iLO reach the phone rather than the
+// reverse — needed to serve it an image for virtual media. Kotlin still only ever sees a plain
+// localhost socket, so nothing above this file has to know a tunnel is involved.
+//
+// Note that the iLO also needs a route to the tunnel's subnet for any of this to be reachable; that
+// is the peer's configuration, not something this end can arrange.
+func (t *Tunnel) ReverseTCP(tunnelPort int, localPort int) error {
+	bind, err := t.listenAddr(tunnelPort)
+	if err != nil {
+		return err
+	}
+	listener, err := t.tnet.ListenTCPAddrPort(bind)
+	if err != nil {
+		return fmt.Errorf("écoute TCP sur %s dans le tunnel : %w", bind, err)
+	}
+	if err := t.track(listener); err != nil {
+		listener.Close()
+		return err
+	}
+
+	target := fmt.Sprintf("127.0.0.1:%d", localPort)
+	go func() {
+		for {
+			remote, err := listener.Accept()
+			if err != nil {
+				return // listener closed
+			}
+			go func() {
+				defer remote.Close()
+				local, err := net.Dial("tcp", target)
+				if err != nil {
+					return
+				}
+				defer local.Close()
+				done := make(chan struct{}, 2)
+				go func() { io.Copy(local, remote); done <- struct{}{} }()
+				go func() { io.Copy(remote, local); done <- struct{}{} }()
+				<-done
+			}()
+		}
+	}()
+	return nil
+}
+
+// ReverseUDP does the same for UDP, which is what makes SNMP traps possible.
+//
+// Binding port 162 here costs nothing, because this stack is entirely in userspace: the kernel is
+// never asked, so the usual rule reserving ports below 1024 to root does not apply. That is the
+// whole reason instant alerts can work on an unrooted phone.
+//
+// Replies are carried back to their sender, as the outbound forwarder does, even though a trap
+// never expects one — the caller may want this socket for a request/response protocol later.
+func (t *Tunnel) ReverseUDP(tunnelPort int, localPort int) error {
+	bind, err := t.listenAddr(tunnelPort)
+	if err != nil {
+		return err
+	}
+	inbound, err := t.tnet.ListenUDPAddrPort(bind)
+	if err != nil {
+		return fmt.Errorf("écoute UDP sur %s dans le tunnel : %w", bind, err)
+	}
+	if err := t.track(inbound); err != nil {
+		inbound.Close()
+		return err
+	}
+
+	target := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: localPort}
+	go func() {
+		// One local socket per remote sender, so replies are delivered to the right one.
+		peers := map[string]*net.UDPConn{}
+		var mu sync.Mutex
+		buf := make([]byte, 65535)
+		for {
+			n, from, err := inbound.ReadFrom(buf)
+			if err != nil {
+				return // socket closed
+			}
+			key := from.String()
+			mu.Lock()
+			out := peers[key]
+			if out == nil {
+				out, err = net.DialUDP("udp", nil, target)
+				if err != nil {
+					mu.Unlock()
+					continue
+				}
+				peers[key] = out
+				conn, replyTo := out, from
+				go func() {
+					reply := make([]byte, 65535)
+					for {
+						n, err := conn.Read(reply)
+						if err != nil {
+							mu.Lock()
+							delete(peers, key)
+							mu.Unlock()
+							conn.Close()
+							return
+						}
+						inbound.WriteTo(reply[:n], replyTo)
+					}
+				}()
+			}
+			mu.Unlock()
+			out.Write(buf[:n])
+		}
+	}()
+	return nil
+}
+
+// listenAddr picks the address an inbound listener binds to: this peer's own IPv4 address inside
+// the tunnel.
+//
+// The unspecified address cannot be used. netstack reads the address family from the address
+// itself, so a zero one is taken for IPv6 and the listener would never see IPv4 traffic — it would
+// bind without error and then stay silent, which is the worst kind of failure.
+func (t *Tunnel) listenAddr(port int) (netip.AddrPort, error) {
+	if port < 0 || port > 65535 {
+		return netip.AddrPort{}, fmt.Errorf("port hors limites : %d", port)
+	}
+	for _, addr := range t.addrs {
+		if addr.Is4() {
+			return netip.AddrPortFrom(addr, uint16(port)), nil
+		}
+	}
+	return netip.AddrPort{}, errors.New("aucune adresse IPv4 dans la configuration du tunnel")
+}
+
 // Ping sends ICMP echo requests through the tunnel and reports whether any reply came back.
 //
 // This cannot be done from Kotlin. The tunnel has no system network interface, so the platform's
@@ -250,10 +384,18 @@ func (t *Tunnel) Status() (string, error) {
 
 // Close tears down every forwarder and the tunnel itself.
 func (t *Tunnel) Close() error {
+	t.closeListeners()
+	t.dev.Close()
+	return nil
+}
+
+// closeListeners shuts every socket opened on this tunnel and marks it closed, so nothing new can
+// be tracked afterwards. Separate from Close because it is also all a tunnel with no device needs.
+func (t *Tunnel) closeListeners() {
 	t.mu.Lock()
 	if t.closed {
 		t.mu.Unlock()
-		return nil
+		return
 	}
 	t.closed = true
 	listeners := t.listeners
@@ -263,8 +405,6 @@ func (t *Tunnel) Close() error {
 	for _, l := range listeners {
 		l.Close()
 	}
-	t.dev.Close()
-	return nil
 }
 
 func (t *Tunnel) track(c io.Closer) error {

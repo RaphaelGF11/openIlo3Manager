@@ -13,6 +13,22 @@ jump host identically, as plain address translation (see `HostTunnelManager`).
 
 Unlike an SSH jump host, this carries UDP, which is what makes IPMI usable through the tunnel.
 
+## Both directions
+
+`ForwardTCP` and `ForwardUDP` reach out of the tunnel. `ReverseTCP` and `ReverseUDP` are their
+mirror: they listen *inside* the tunnel and relay to an ordinary server on `127.0.0.1`, so the iLO
+can reach the phone. Two features need that — serving an image for virtual media, and receiving SNMP
+traps.
+
+Listening here also sidesteps a limit that looked fatal: port 162 is reserved to root for a normal
+socket, but this stack never asks the kernel, so an unrooted app binds it freely. `tunnel_test.go`
+pins that, along with the rule that a listener must bind one of the tunnel's own IPv4 addresses —
+netstack infers the address family from the address, so an unspecified one silently yields an IPv6
+listener that never sees IPv4 traffic.
+
+Reachability is still the peer's business: the iLO needs a route to the tunnel's subnet, or address
+translation on the WireGuard server. Nothing this end can arrange.
+
 ## Rebuilding
 
 The compiled `app/libs/wgtunnel.aar` is checked in so that building the app needs neither Go nor the
