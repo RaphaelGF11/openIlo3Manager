@@ -28,19 +28,27 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import net.raphaelgf11.ilo3manager.data.HostRepository
+import net.raphaelgf11.ilo3manager.data.NetworkRepository
 import net.raphaelgf11.ilo3manager.data.NotificationSettingsRepository
 import net.raphaelgf11.ilo3manager.data.SettingsRepository
 import net.raphaelgf11.ilo3manager.ui.host.AddEditHostScreen
 import net.raphaelgf11.ilo3manager.ui.host.HostListScreen
 import net.raphaelgf11.ilo3manager.ui.host.HostListViewModel
 import net.raphaelgf11.ilo3manager.ui.hostdetail.HostDetailScreen
+import net.raphaelgf11.ilo3manager.ui.network.AddEditNetworkScreen
+import net.raphaelgf11.ilo3manager.ui.network.NetworkListScreen
+import net.raphaelgf11.ilo3manager.ui.setup.HostSetupWizardScreen
 import net.raphaelgf11.ilo3manager.ui.settings.SettingsScreen
 
 private const val ROUTE_HOST_LIST = "hosts"
 private const val ROUTE_ADD_HOST = "hosts/add"
+private const val ROUTE_SETUP_WIZARD = "hosts/assisted"
 private const val ROUTE_EDIT_HOST = "hosts/{hostId}/edit"
 private const val ROUTE_HOST_DETAIL = "hosts/{hostId}"
 private const val ROUTE_SETTINGS = "settings"
+private const val ROUTE_NETWORKS = "networks"
+private const val ROUTE_ADD_NETWORK = "networks/add"
+private const val ROUTE_EDIT_NETWORK = "networks/{networkId}/edit"
 
 @Composable
 fun AppNavGraph(
@@ -51,6 +59,7 @@ fun AppNavGraph(
 ) {
     val navController = rememberNavController()
     val context = androidx.compose.ui.platform.LocalContext.current
+    val networkRepository = remember { NetworkRepository(context) }
 
     // Opened from a front-panel widget: go straight to that server, with the host list left
     // underneath so Back returns there rather than out of the app.
@@ -107,10 +116,41 @@ fun AppNavGraph(
             HostListScreen(
                 viewModel = viewModel,
                 notificationSettingsRepository = notificationSettingsRepository,
-                onAddHost = { navController.navigate(ROUTE_ADD_HOST) },
+                onAddHost = { navController.navigate(ROUTE_SETUP_WIZARD) },
                 onOpenHost = { host -> navController.navigate("hosts/${host.id}") },
                 onEditHost = { host -> navController.navigate("hosts/${host.id}/edit") },
                 onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
+                onOpenNetworks = { navController.navigate(ROUTE_NETWORKS) },
+            )
+        }
+        composable(ROUTE_NETWORKS) {
+            NetworkListScreen(
+                networkRepository = networkRepository,
+                hostRepository = repository,
+                onBack = { navController.popBackStack() },
+                onAddNetwork = { navController.navigate(ROUTE_ADD_NETWORK) },
+                onEditNetwork = { network -> navController.navigate("networks/${network.id}/edit") },
+            )
+        }
+        composable(ROUTE_ADD_NETWORK) {
+            AddEditNetworkScreen(
+                repository = networkRepository,
+                existingNetwork = null,
+                onDone = { navController.popBackStack() },
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(
+            ROUTE_EDIT_NETWORK,
+            arguments = listOf(navArgument("networkId") { type = NavType.StringType }),
+        ) { entry ->
+            val networkId = entry.arguments?.getString("networkId")
+            val network = networkRepository.getNetworks().firstOrNull { it.id == networkId }
+            AddEditNetworkScreen(
+                repository = networkRepository,
+                existingNetwork = network,
+                onDone = { navController.popBackStack() },
+                onBack = { navController.popBackStack() },
             )
         }
         composable(ROUTE_SETTINGS) {
@@ -118,6 +158,20 @@ fun AppNavGraph(
                 repository = settingsRepository,
                 hostRepository = repository,
                 onBack = { navController.popBackStack() },
+            )
+        }
+        composable(ROUTE_SETUP_WIZARD) {
+            HostSetupWizardScreen(
+                hostRepository = repository,
+                onDone = { navController.popBackStack() },
+                onBack = { navController.popBackStack() },
+                // Replaces the assistant rather than stacking on it: the user chose the manual
+                // form, so Back belongs to the host list, not to the screen they just left.
+                onManualSetup = {
+                    navController.navigate(ROUTE_ADD_HOST) {
+                        popUpTo(ROUTE_SETUP_WIZARD) { inclusive = true }
+                    }
+                },
             )
         }
         composable(ROUTE_ADD_HOST) {

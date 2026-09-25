@@ -51,9 +51,11 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import net.raphaelgf11.ilo3manager.R
 import net.raphaelgf11.ilo3manager.data.NotificationSettingsRepository
 import net.raphaelgf11.ilo3manager.data.SshHost
 import androidx.compose.runtime.LaunchedEffect
@@ -67,6 +69,7 @@ import net.raphaelgf11.ilo3manager.ilo.HostStateProbe
 import net.raphaelgf11.ilo3manager.ssh.ConnectionState
 import net.raphaelgf11.ilo3manager.ssh.HostSessionStore
 import net.raphaelgf11.ilo3manager.webgateway.WebGatewayManager
+import net.raphaelgf11.ilo3manager.ui.common.ConfirmDeleteDialog
 import net.raphaelgf11.ilo3manager.ui.dashboard.StatusDot
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -78,6 +81,7 @@ fun HostListScreen(
     onOpenHost: (SshHost) -> Unit,
     onEditHost: (SshHost) -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenNetworks: () -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
@@ -88,6 +92,7 @@ fun HostListScreen(
     val hosts by viewModel.hosts.collectAsState()
     var editMode by remember { mutableStateOf(false) }
     var notificationDialogHost by remember { mutableStateOf<SshHost?>(null) }
+    var pendingDeletion by remember { mutableStateOf<SshHost?>(null) }
     var draggingId by remember { mutableStateOf<String?>(null) }
     var draggingIndex by remember { mutableStateOf(0) }
     var dragAccumulated by remember { mutableFloatStateOf(0f) }
@@ -100,6 +105,15 @@ fun HostListScreen(
                 title = { Text("iLO3 Manager") },
                 actions = {
                     if (!editMode) {
+                        // The LAN symbol from the server's own silkscreen, the same one the
+                        // front-panel widget draws beside each port. The bundled icon set has no
+                        // network glyph, and its nearest — the node graph — reads as "share".
+                        IconButton(onClick = onOpenNetworks) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_network),
+                                contentDescription = "Réseaux",
+                            )
+                        }
                         IconButton(onClick = onOpenSettings) {
                             Icon(Icons.Filled.Settings, contentDescription = "Réglages")
                         }
@@ -115,6 +129,10 @@ fun HostListScreen(
         },
         floatingActionButton = {
             if (!editMode) {
+                // One way in. It opens the assistant, which reads the server's own settings
+                // rather than asking the user for them, and which offers the manual form to anyone
+                // it cannot reach — two buttons here only made the user choose before knowing
+                // which one applied.
                 FloatingActionButton(onClick = onAddHost) {
                     Icon(Icons.Filled.Add, contentDescription = "Ajouter un hôte")
                 }
@@ -198,7 +216,7 @@ fun HostListScreen(
                         },
                         onClick = { if (!editMode) onOpenHost(host) },
                         onEdit = { onEditHost(host) },
-                        onDelete = { viewModel.deleteHost(host.id) },
+                        onDelete = { pendingDeletion = host },
                         onDisconnect = { viewModel.disconnectHost(context, host.id) },
                         onOpenNotificationSettings = { notificationDialogHost = host },
                     )
@@ -208,6 +226,18 @@ fun HostListScreen(
         }
     }
 
+    pendingDeletion?.let { host ->
+        ConfirmDeleteDialog(
+            title = "Supprimer « ${host.name} » ?",
+            message = "Son compte, sa clé et ses réglages seront effacés définitivement. " +
+                "Le serveur lui-même n'est pas touché.",
+            onConfirm = {
+                viewModel.deleteHost(host.id)
+                pendingDeletion = null
+            },
+            onDismiss = { pendingDeletion = null },
+        )
+    }
 }
 
 /** Slow enough not to hammer several BMCs, fast enough to notice a machine going down. */

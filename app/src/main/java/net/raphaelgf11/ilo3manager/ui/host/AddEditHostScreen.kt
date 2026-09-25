@@ -17,14 +17,19 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -41,8 +46,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -50,36 +55,37 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.journeyapps.barcodescanner.ScanContract
-import com.journeyapps.barcodescanner.ScanOptions
 import net.raphaelgf11.ilo3manager.data.AuthMethod
 import net.raphaelgf11.ilo3manager.data.HostNotificationSettings
 import net.raphaelgf11.ilo3manager.notify.MonitorScheduler
+import net.raphaelgf11.ilo3manager.notify.SnmpDirectActions
+import net.raphaelgf11.ilo3manager.notify.trapDestinationBlocker
+import net.raphaelgf11.ilo3manager.notify.trapDestinationFor
 import net.raphaelgf11.ilo3manager.notify.MonitorStateStore
 import androidx.compose.material3.FilterChip
 import androidx.compose.runtime.LaunchedEffect
 import net.raphaelgf11.ilo3manager.data.HostRepository
 import net.raphaelgf11.ilo3manager.data.HostTab
+import net.raphaelgf11.ilo3manager.data.InstantAlertMode
+import net.raphaelgf11.ilo3manager.data.NetworkConfig
+import net.raphaelgf11.ilo3manager.data.NetworkRepository
 import net.raphaelgf11.ilo3manager.data.SshHost
-import net.raphaelgf11.ilo3manager.data.VpnType
 import net.raphaelgf11.ilo3manager.ipmi.IpmiPrivilege
-import net.raphaelgf11.ilo3manager.vpn.SshTunnelConfig
-import net.raphaelgf11.ilo3manager.vpn.WireGuardConfigParser
 import net.raphaelgf11.ilo3manager.ssh.HostSessionStore
 import net.raphaelgf11.ilo3manager.ssh.SshKeyGenerator
+import net.raphaelgf11.ilo3manager.ui.common.RadioRow
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
 private const val TAB_GENERAL = "Général"
 private const val TAB_AUTH = "Authentification"
 private const val TAB_IPMI = "IPMI"
-private const val TAB_VPN = "VPN"
 private const val TAB_NOTIF = "Notifications"
 
 /** Credentials and IPMI are meaningless for a gateway-only host, so those tabs disappear. */
 private fun tabsFor(webGatewayOnly: Boolean): List<String> =
-    if (webGatewayOnly) listOf(TAB_GENERAL, TAB_VPN)
-    else listOf(TAB_GENERAL, TAB_AUTH, TAB_IPMI, TAB_VPN, TAB_NOTIF)
+    if (webGatewayOnly) listOf(TAB_GENERAL)
+    else listOf(TAB_GENERAL, TAB_AUTH, TAB_IPMI, TAB_NOTIF)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -131,25 +137,15 @@ fun AddEditHostScreen(
     var ipmiPrivilege by remember { mutableStateOf(existingHost?.ipmiPrivilege ?: IpmiPrivilege.OPERATOR) }
     var alwaysOpenSsh by remember { mutableStateOf(existingHost?.alwaysOpenSsh ?: false) }
     var notificationsOverIpmi by remember { mutableStateOf(existingHost?.notificationsOverIpmi ?: false) }
-    var vpnType by remember { mutableStateOf(existingHost?.vpnType ?: VpnType.NONE) }
-    var wireGuardConfig by remember { mutableStateOf(existingHost?.wireGuardConfig ?: "") }
-    var sshTunnelConfig by remember { mutableStateOf(existingHost?.sshTunnelConfig ?: "") }
-
-    // A WireGuard QR code encodes the .conf text verbatim, so a scan feeds the same parser as a
-    // pasted or imported configuration.
-    val qrScanner = rememberLauncherForActivityResult(ScanContract()) { result ->
-        result.contents?.let { wireGuardConfig = it }
+    var networkId by remember { mutableStateOf(existingHost?.networkId ?: "") }
+    var instantAlertMode by remember {
+        mutableStateOf(existingHost?.instantAlertMode ?: InstantAlertMode.DISABLED)
     }
+    var alertGatewayUrl by remember { mutableStateOf(existingHost?.alertGatewayUrl ?: "") }
 
-    val vpnFilePicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent(),
-    ) { uri: Uri? ->
-        uri?.let {
-            context.contentResolver.openInputStream(it)?.use { stream ->
-                wireGuardConfig = BufferedReader(InputStreamReader(stream)).readText()
-            }
-        }
-    }
+    // Read once per visit to the screen: networks are managed on their own screen, which cannot be
+    // reached from here without leaving it first.
+    val networks = remember { NetworkRepository(context).getNetworks() }
 
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
@@ -203,15 +199,18 @@ fun AddEditHostScreen(
                             ipmiPrivilege = ipmiPrivilege,
                             alwaysOpenSsh = alwaysOpenSsh && ipmiEnabled,
                             notificationsOverIpmi = notificationsOverIpmi && ipmiEnabled,
-                            vpnType = vpnType,
-                            wireGuardConfig = wireGuardConfig,
-                            sshTunnelConfig = sshTunnelConfig,
+                            networkId = networkId,
+                            instantAlertMode = instantAlertMode,
+                            alertGatewayUrl = alertGatewayUrl,
                         )
                         repository.saveHost(host)
                         notificationRepository.save(host.id, notifSettings)
                         // Rescheduling here rather than only at app start: enabling monitoring on a
                         // host must take effect now, not at the next launch.
                         net.raphaelgf11.ilo3manager.notify.MonitorScheduler.reschedule(context, notificationRepository)
+                        // Switching instant alerts on or off has to take effect now, and switching
+                        // them off has to actually release the socket.
+                        net.raphaelgf11.ilo3manager.notify.TrapReceiverService.sync(context)
                         // A session for this host may already be running with the previous record;
                         // without this the edit would only take effect after an app restart.
                         HostSessionStore.updateHost(host)
@@ -269,6 +268,9 @@ fun AddEditHostScreen(
                         onDefaultTabChange = { defaultTab = it },
                         webGatewayOnly = webGatewayOnly,
                         onWebGatewayOnlyChange = { webGatewayOnly = it },
+                        networks = networks,
+                        networkId = networkId,
+                        onNetworkIdChange = { networkId = it },
                     )
                     TAB_AUTH -> AuthenticationTab(
                         isNewHost = existingHost == null,
@@ -294,25 +296,18 @@ fun AddEditHostScreen(
                             }
                         },
                     )
-                    TAB_VPN -> VpnTab(
-                        type = vpnType,
-                        onTypeChange = { vpnType = it },
-                        wireGuardConfig = wireGuardConfig,
-                        onWireGuardConfigChange = { wireGuardConfig = it },
-                        sshTunnelConfig = sshTunnelConfig,
-                        onSshTunnelConfigChange = { sshTunnelConfig = it },
-                        onImportFile = { vpnFilePicker.launch("*/*") },
-                        onScanQrCode = { qrScanner.launch(ScanOptions().apply {
-                            setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-                            setPrompt("Scannez le QR code WireGuard")
-                            setBeepEnabled(false)
-                            setCaptureActivity(PortraitCaptureActivity::class.java)
-                        }) },
-                    )
                     TAB_NOTIF -> NotificationsTab(
                         hostId = existingHost?.id,
                         settings = notifSettings,
                         onSettingsChange = { notifSettings = it },
+                        instantAlertMode = instantAlertMode,
+                        onInstantAlertModeChange = { instantAlertMode = it },
+                        alertGatewayUrl = alertGatewayUrl,
+                        onAlertGatewayUrlChange = { alertGatewayUrl = it },
+                        // The network currently picked on the Général tab, not the saved one: the
+                        // trap destination has to match the choice the user is looking at.
+                        network = networks.firstOrNull { it.id == networkId },
+                        savedHost = existingHost?.copy(networkId = networkId),
                     )
                     TAB_IPMI -> IpmiTab(
                         enabled = ipmiEnabled,
@@ -358,6 +353,9 @@ private fun GeneralTab(
     onDefaultTabChange: (HostTab) -> Unit,
     webGatewayOnly: Boolean,
     onWebGatewayOnlyChange: (Boolean) -> Unit,
+    networks: List<NetworkConfig>,
+    networkId: String,
+    onNetworkIdChange: (String) -> Unit,
 ) {
     OutlinedTextField(
         value = name,
@@ -371,6 +369,12 @@ private fun GeneralTab(
         onValueChange = onHostnameChange,
         label = { Text("Adresse (IP ou nom d'hôte)") },
         modifier = Modifier.fillMaxWidth(),
+    )
+    Spacer()
+    NetworkPicker(
+        networks = networks,
+        networkId = networkId,
+        onNetworkIdChange = onNetworkIdChange,
     )
     Spacer()
     OutlinedTextField(
@@ -732,167 +736,101 @@ private fun IpmiTab(
 }
 
 /**
- * One entry of a radio group, selectable from anywhere on the row.
+ * Chooses which named network this host is reached through.
  *
- * The whole row carries the selection rather than the button alone: a label that does nothing when
- * tapped is a small trap on a touch screen, and `selectable` also merges the row into a single
- * accessibility node announced as a radio button, which separate clickables would not do.
+ * The configuration itself lives on the Réseaux screen, not here: it is shared between hosts, so
+ * editing it from inside one server would hide that changing it changes the others too.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun RadioRow(selected: Boolean, label: String, onSelect: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .selectable(selected = selected, onClick = onSelect, role = Role.RadioButton)
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
+private fun NetworkPicker(
+    networks: List<NetworkConfig>,
+    networkId: String,
+    onNetworkIdChange: (String) -> Unit,
+) {
+    if (networks.isEmpty()) {
+        Text("Réseau", style = MaterialTheme.typography.titleSmall)
+        Text(
+            "Aucun réseau défini. Ce serveur est joint directement. Pour passer par un tunnel, " +
+                "créez un réseau avec le bouton Réseaux de l'écran d'accueil.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        return
+    }
+
+    val selected = networks.firstOrNull { it.id == networkId }
+    // A host can point at a network a restore did not bring back. Saying so in the field beats
+    // showing "Accès direct", which would be a plain lie about how this host connects.
+    val dangling = networkId.isNotBlank() && selected == null
+    var expanded by remember { mutableStateOf(false) }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
     ) {
-        // Null: the row already handles the click, and a nested one would double the semantics.
-        RadioButton(selected = selected, onClick = null)
-        Text(label, modifier = Modifier.padding(start = 8.dp))
+        OutlinedTextField(
+            value = when {
+                dangling -> "Réseau introuvable"
+                selected != null -> selected.name
+                else -> DIRECT_ACCESS
+            },
+            onValueChange = {},
+            readOnly = true,
+            isError = dangling,
+            label = { Text("Réseau") },
+            supportingText = {
+                Text(
+                    when {
+                        dangling -> "Le réseau enregistré pour ce serveur n'existe plus. " +
+                            "Choisissez-en un autre, ou l'accès direct."
+                        selected == null -> "Le serveur est joint sans tunnel."
+                        !selected.isUsable -> "${selected.type.label} — configuration incomplète"
+                        else -> selected.type.label
+                    },
+                )
+            },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            // Anchors the menu to the field and gives it the same width; without it the menu
+            // appears at the top of the screen.
+            modifier = Modifier
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                .fillMaxWidth(),
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text(DIRECT_ACCESS) },
+                onClick = {
+                    onNetworkIdChange("")
+                    expanded = false
+                },
+            )
+            networks.forEach { network ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(network.name)
+                            Text(
+                                network.type.label +
+                                    if (network.isUsable) "" else " — configuration incomplète",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    },
+                    onClick = {
+                        onNetworkIdChange(network.id)
+                        expanded = false
+                    },
+                )
+            }
+        }
     }
 }
+
+private const val DIRECT_ACCESS = "Accès direct"
 
 @Composable
 private fun Spacer() {
     androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(top = 4.dp))
-}
-
-@Composable
-private fun VpnTab(
-    type: VpnType,
-    onTypeChange: (VpnType) -> Unit,
-    wireGuardConfig: String,
-    onWireGuardConfigChange: (String) -> Unit,
-    sshTunnelConfig: String,
-    onSshTunnelConfigChange: (String) -> Unit,
-    onImportFile: () -> Unit,
-    onScanQrCode: () -> Unit,
-) {
-    Text("Tunnel")
-    VpnType.entries.forEach { candidate ->
-        RadioRow(
-            selected = type == candidate,
-            label = when (candidate) {
-                VpnType.NONE -> "Aucun (accès direct)"
-                VpnType.WIREGUARD -> "WireGuard"
-                VpnType.SSH_TUNNEL -> "Rebond SSH (port forwarding)"
-            },
-            onSelect = { onTypeChange(candidate) },
-        )
-    }
-
-    if (type == VpnType.SSH_TUNNEL) {
-        val tunnel = remember(sshTunnelConfig) { SshTunnelConfig.fromJson(sshTunnelConfig) }
-        fun update(block: SshTunnelConfig.() -> SshTunnelConfig) {
-            onSshTunnelConfigChange(tunnel.block().toJson())
-        }
-
-        Spacer()
-        Text(
-            "Les connexions vers l'iLO sont relayées par cette machine intermédiaire.",
-            style = MaterialTheme.typography.bodySmall,
-        )
-        Spacer()
-        OutlinedTextField(
-            value = tunnel.host,
-            onValueChange = { v -> update { copy(host = v) } },
-            label = { Text("Hôte de rebond") },
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer()
-        OutlinedTextField(
-            value = tunnel.port.toString(),
-            onValueChange = { v -> update { copy(port = v.filter { c -> c.isDigit() }.toIntOrNull() ?: 22) } },
-            label = { Text("Port SSH du rebond") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer()
-        OutlinedTextField(
-            value = tunnel.username,
-            onValueChange = { v -> update { copy(username = v) } },
-            label = { Text("Utilisateur du rebond") },
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer()
-        OutlinedTextField(
-            value = tunnel.password,
-            onValueChange = { v -> update { copy(password = v) } },
-            label = { Text("Mot de passe (ou laissez vide et collez une clé)") },
-            visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer()
-        OutlinedTextField(
-            value = tunnel.privateKey,
-            onValueChange = { v -> update { copy(privateKey = v) } },
-            label = { Text("Clé privée du rebond (optionnel)") },
-            modifier = Modifier.fillMaxWidth(),
-            minLines = 3,
-        )
-        Spacer()
-        Text(
-            "Le rebond SSH ne transporte que du TCP. L'onglet Alim ne pourra donc pas utiliser " +
-                "IPMI, qui fonctionne en UDP, et repassera automatiquement par la CLI SSH.",
-            color = MaterialTheme.colorScheme.error,
-            style = MaterialTheme.typography.bodySmall,
-        )
-    }
-
-    if (type == VpnType.WIREGUARD) {
-        Spacer()
-        Row {
-            OutlinedButton(onClick = onImportFile) {
-                Text("Importer un .conf")
-            }
-            OutlinedButton(onClick = onScanQrCode, modifier = Modifier.padding(start = 8.dp)) {
-                Text("Scanner un QR code")
-            }
-        }
-        Spacer()
-        OutlinedTextField(
-            value = wireGuardConfig,
-            onValueChange = onWireGuardConfigChange,
-            label = { Text("Configuration WireGuard (collez, importez ou scannez)") },
-            modifier = Modifier.fillMaxWidth(),
-            minLines = 6,
-        )
-        Spacer()
-
-        // Parse as the user types so a malformed file is caught here rather than at connection
-        // time, and so the summary confirms the app read what the user expected.
-        if (wireGuardConfig.isNotBlank()) {
-            val parsed = runCatching { WireGuardConfigParser.parse(wireGuardConfig) }
-            parsed.fold(
-                onSuccess = { wg ->
-                    Text("Configuration valide", style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        "Pair : ${wg.endpoint}\n" +
-                            "Adresse locale : ${wg.addresses.joinToString(", ")}\n" +
-                            "Réseaux routés : ${wg.allowedIps.joinToString(", ")}",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                },
-                onFailure = { error ->
-                    Text(
-                        error.message ?: "Configuration illisible",
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                },
-            )
-        }
-
-        Spacer()
-        Text(
-            "Le tunnel n'est pas encore établi par l'application : cette configuration est " +
-                "enregistrée mais pas utilisée. L'acheminement du trafic sera ajouté dans une " +
-                "prochaine version.",
-            color = MaterialTheme.colorScheme.error,
-            style = MaterialTheme.typography.bodySmall,
-        )
-    }
 }
 
 /**
@@ -908,6 +846,12 @@ private fun NotificationsTab(
     hostId: String?,
     settings: HostNotificationSettings,
     onSettingsChange: (HostNotificationSettings) -> Unit,
+    instantAlertMode: InstantAlertMode,
+    onInstantAlertModeChange: (InstantAlertMode) -> Unit,
+    alertGatewayUrl: String,
+    onAlertGatewayUrlChange: (String) -> Unit,
+    network: NetworkConfig?,
+    savedHost: SshHost?,
 ) {
     val context = LocalContext.current
     val stateStore = remember { MonitorStateStore(context) }
@@ -1014,6 +958,246 @@ private fun NotificationsTab(
         }
         testing = false
     }
+
+    Spacer()
+    InstantAlertSection(
+        mode = instantAlertMode,
+        onModeChange = onInstantAlertModeChange,
+        alertGatewayUrl = alertGatewayUrl,
+        onAlertGatewayUrlChange = onAlertGatewayUrlChange,
+        network = network,
+        savedHost = savedHost,
+    )
+}
+
+/**
+ * Alerting between two periodic checks.
+ *
+ * The periodic check is the safety net and stays whatever is chosen here: a trap is UDP and
+ * fire-and-forget, and none arrives at all when the iLO itself is gone.
+ */
+@Composable
+private fun InstantAlertSection(
+    mode: InstantAlertMode,
+    onModeChange: (InstantAlertMode) -> Unit,
+    alertGatewayUrl: String,
+    onAlertGatewayUrlChange: (String) -> Unit,
+    network: NetworkConfig?,
+    savedHost: SshHost?,
+) {
+    Text("Alerte instantanée", style = MaterialTheme.typography.titleSmall)
+    InstantAlertMode.entries.forEach { candidate ->
+        RadioRow(
+            selected = mode == candidate,
+            label = candidate.label,
+            detail = candidate.detail,
+            onSelect = { onModeChange(candidate) },
+        )
+    }
+
+    when (mode) {
+        InstantAlertMode.SNMP_DIRECT -> SnmpDirectPanel(network = network, savedHost = savedHost)
+        InstantAlertMode.SNMP_GATEWAY, InstantAlertMode.FIREBASE -> {
+            Spacer()
+            OutlinedTextField(
+                value = alertGatewayUrl,
+                onValueChange = onAlertGatewayUrlChange,
+                label = { Text("Adresse de la passerelle (hôte:port)") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer()
+            Text(
+                "Le transport n'est pas encore implémenté : ce réglage est enregistré mais " +
+                    "aucune alerte ne transitera par cette passerelle pour l'instant.",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        InstantAlertMode.DISABLED -> Unit
+    }
+}
+
+/**
+ * Configuring the iLO to send its traps here, and checking it can.
+ *
+ * The two buttons answer different questions and neither replaces the other: configuring writes a
+ * destination into the BMC, testing asks the BMC whether that destination is reachable from where
+ * it stands.
+ */
+@Composable
+private fun SnmpDirectPanel(network: NetworkConfig?, savedHost: SshHost?) {
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    var outcome by remember { mutableStateOf<Result<String>?>(null) }
+
+    var slotChoice by remember { mutableStateOf<SnmpDirectActions.SnmpState?>(null) }
+
+    val blocker = remember(network) { trapDestinationBlocker(network) }
+    val destination = remember(network) {
+        trapDestinationFor(network, SnmpDirectActions::localIpv4Addresses)
+    }
+
+    Spacer()
+    if (blocker != null) {
+        Text(blocker, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        return
+    }
+
+    Text(
+        destination.fold(
+            onSuccess = { "L'iLO enverra ses traps à $it." },
+            onFailure = { "Destination indéterminable : ${it.message}" },
+        ),
+        style = MaterialTheme.typography.bodySmall,
+        color = if (destination.isFailure) MaterialTheme.colorScheme.error else Color.Unspecified,
+    )
+
+    if (savedHost == null) {
+        Spacer()
+        Text(
+            "Enregistrez le serveur avant de configurer l'iLO : les deux boutons ouvrent une " +
+                "session SSH avec ses identifiants.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        return
+    }
+
+    fun run(action: suspend () -> Result<String>) {
+        busy = true
+        outcome = null
+        scope.launch {
+            outcome = action()
+            busy = false
+        }
+    }
+
+    Spacer()
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(
+            onClick = {
+                busy = true
+                outcome = null
+                scope.launch {
+                    // Read first and let the user pick: writing into a slot the app chose alone
+                    // could silently replace a destination their monitoring depends on.
+                    SnmpDirectActions.readSnmpState(savedHost, network)
+                        .onSuccess { slotChoice = it }
+                        .onFailure { outcome = Result.failure(it) }
+                    busy = false
+                }
+            },
+            enabled = !busy && destination.isSuccess,
+            modifier = Modifier.weight(1f),
+        ) {
+            Text("Configurer")
+        }
+        OutlinedButton(
+            onClick = { run { SnmpDirectActions.testReachability(savedHost, network) } },
+            enabled = !busy && destination.isSuccess,
+            modifier = Modifier.weight(1f),
+        ) {
+            Text("Tester")
+        }
+    }
+
+    Spacer()
+    if (busy) {
+        Text("Session SSH en cours…", style = MaterialTheme.typography.bodySmall)
+    }
+    outcome?.let { result ->
+        Text(
+            result.fold(
+                onSuccess = { it },
+                onFailure = { it.message ?: "Échec sans message." },
+            ),
+            color = if (result.isFailure) MaterialTheme.colorScheme.error else Color.Unspecified,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+
+    Spacer()
+    Text(
+        "« Tester » demande à l'iLO de pinguer le téléphone : c'est le sens qui casse, et le seul " +
+            "que ce micrologiciel permette de vérifier — sa CLI n'expose pas le « Send test " +
+            "alert » de l'interface web. Un ping qui passe ne garantit pas que le port UDP 162 " +
+            "soit ouvert tout du long.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+
+    Spacer()
+    Text(
+        "Le téléphone écoute les traps dès que ce mode est enregistré, par un service en " +
+            "arrière-plan permanent. L'écoute passe obligatoirement par un réseau WireGuard : " +
+            "le port 162 est réservé par Android, et seul le tunnel peut l'ouvrir — sa pile " +
+            "réseau étant en espace utilisateur, la notion de port privilégié n'y existe pas.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+
+    slotChoice?.let { state ->
+        SnmpSlotDialog(
+            state = state,
+            onDismiss = { slotChoice = null },
+            onConfirm = { slot ->
+                slotChoice = null
+                run { SnmpDirectActions.writeDestination(savedHost, network, slot) }
+            },
+        )
+    }
+}
+
+/**
+ * Picks which of the iLO's three destinations to write into.
+ *
+ * Shows what each currently holds rather than only offering the free ones: replacing a stale
+ * destination is a legitimate thing to want, and the user is the only one who can tell a stale one
+ * from a monitoring system still in use.
+ */
+@Composable
+private fun SnmpSlotDialog(
+    state: SnmpDirectActions.SnmpState,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit,
+) {
+    var selected by remember { mutableIntStateOf(state.recommended ?: 1) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Quelle destination écrire ?") },
+        text = {
+            Column {
+                Text(
+                    "L'iLO en garde trois. ${state.destination} sera écrite dans celle que vous " +
+                        "choisissez.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer()
+                state.slots.forEachIndexed { index, value ->
+                    val slot = index + 1
+                    val free = value.isBlank() || value == "0" || value == "0.0.0.0"
+                    RadioRow(
+                        selected = selected == slot,
+                        label = "Destination $slot",
+                        detail = when {
+                            value.trim() == state.destination -> "déjà ce téléphone"
+                            free -> "libre"
+                            else -> "occupée par $value — sera remplacée"
+                        },
+                        onSelect = { selected = slot },
+                    )
+                }
+                if (!state.alertsEnabled) {
+                    Spacer()
+                    Text(
+                        "Les alertes iLO sont désactivées ; elles seront activées, sans quoi " +
+                            "aucune trap ne partirait.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(selected) }) { Text("Écrire") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } },
+    )
 }
 
 @Composable
