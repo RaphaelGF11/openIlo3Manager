@@ -98,6 +98,13 @@
             </intent-filter>
         </activity>
 
+        <!-- Holds the SNMP trap sockets open. A foreground service because the whole point is to
+             hear an incident between two periodic checks, which a killable process cannot do. -->
+        <service
+            android:name=".notify.TrapReceiverService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
         <service
             android:name=".webgateway.WebGatewayForegroundService"
             android:exported="false"
