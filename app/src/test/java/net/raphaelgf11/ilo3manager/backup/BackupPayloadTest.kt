@@ -25,7 +25,7 @@ class BackupPayloadTest {
         wireGuard: String = "",
     ) = SshHost(
         name = name,
-        hostname = "192.168.1.230",
+        hostname = "203.0.113.30",
         username = "user",
         authMethod = AuthMethod.PASSWORD,
         networkId = networkId,
@@ -98,7 +98,7 @@ class BackupPayloadTest {
         // tunnel sits in the host. Restoring must not silently drop it.
         val version1 = """
             {"version":1,"hosts":[{
-              "id":"h1","name":"DL 380","hostname":"192.168.1.230","port":22,
+              "id":"h1","name":"DL 380","hostname":"203.0.113.30","port":22,
               "username":"user","authMethod":"PASSWORD",
               "vpnType":"WIREGUARD","wireGuardConfig":"[Interface]\nPrivateKey = abc"
             }]}

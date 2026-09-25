@@ -19,7 +19,7 @@ class LegacyVpnMigrationTest {
         networkId: String = "",
     ) = SshHost(
         name = name,
-        hostname = "192.168.1.230",
+        hostname = "203.0.113.30",
         username = "user",
         authMethod = AuthMethod.PASSWORD,
         networkId = networkId,

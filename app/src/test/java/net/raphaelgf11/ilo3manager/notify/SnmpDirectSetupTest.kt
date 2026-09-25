@@ -80,8 +80,8 @@ class SnmpDirectSetupTest {
     @Test
     fun `a failed ping is not read as a success just because the command succeeded`() {
         val success = """
-            oemhp_ping 192.168.1.213
-            32 bytes from 192.168.1.213: icmp_seq=1 errs=0 time=272 ms
+            oemhp_ping 203.0.113.13
+            32 bytes from 203.0.113.13: icmp_seq=1 errs=0 time=272 ms
 
             status=0
             status_tag=COMMAND COMPLETED
@@ -118,7 +118,7 @@ class SnmpDirectSetupTest {
             """.trimIndent(),
         )
 
-        val destination = trapDestinationFor(network) { listOf("192.168.1.213") }
+        val destination = trapDestinationFor(network) { listOf("203.0.113.13") }
 
         // The Wi-Fi address means nothing on the far side of the tunnel.
         assertEquals("10.7.0.3", destination.getOrNull())
@@ -127,8 +127,8 @@ class SnmpDirectSetupTest {
     @Test
     fun `without a network the phone's own address is used`() {
         assertEquals(
-            "192.168.1.213",
-            trapDestinationFor(null) { listOf("192.168.1.213") }.getOrNull(),
+            "203.0.113.13",
+            trapDestinationFor(null) { listOf("203.0.113.13") }.getOrNull(),
         )
     }
 
@@ -150,7 +150,7 @@ class SnmpDirectSetupTest {
             type = NetworkType.SSH_TUNNEL,
             sshTunnelConfig = "{}",
         )
-        assertTrue(trapDestinationFor(network) { listOf("192.168.1.213") }.isFailure)
+        assertTrue(trapDestinationFor(network) { listOf("203.0.113.13") }.isFailure)
         assertTrue(trapDestinationBlocker(network)!!.contains("UDP"))
     }
 

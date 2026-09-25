@@ -22,14 +22,14 @@ class SnmpTrapDecoderTest {
 
     /** An HP-shaped v1 trap: enterprise 1.3.6.1.4.1.232 is Compaq/HP, as an iLO sends. */
     private val iloV1 = bytes(
-        "30818102010004067075626c6963a474060a2b0601040181680902094004c0a801e60201060202232b" +
+        "30818102010004067075626c6963a474060a2b0601040181680902094004cb00711e0201060202232b" +
             "4304075bcd1530533017060c2b0601040181680b020b01000407646c333830673730220" +
             "60c2b060104018168090209010004125465737420747261702066726f6d20694c4f30140608" +
             "2b060102010105000408494c4f2d35542d48",
     )
 
     private val coldStartV1 = bytes(
-        "302702010004067075626c6963a41a06072b0601040181684004c0a801e602010002010043012a3000",
+        "302702010004067075626c6963a41a06072b0601040181684004cb00711e02010002010043012a3000",
     )
 
     private val iloV2c = bytes(
@@ -44,7 +44,7 @@ class SnmpTrapDecoderTest {
         assertEquals(0, trap.version)
         assertEquals("public", trap.community)
         assertEquals("1.3.6.1.4.1.232.9.2.9", trap.enterprise)
-        assertEquals("192.168.1.230", trap.agentAddress)
+        assertEquals("203.0.113.30", trap.agentAddress)
         assertEquals(6, trap.genericTrap)
         assertEquals(9003, trap.specificTrap)
         assertEquals(123456789L, trap.uptimeTicks)
@@ -151,7 +151,7 @@ class SnmpTrapDecoderTest {
         val summary = describeTrap(decodeSnmpTrap(iloV1)!!, "DL380")
         assertEquals("DL380 : alerte matérielle", summary.title)
         assertTrue(summary.detail.startsWith("Test trap from iLO"))
-        assertTrue(summary.detail.contains("192.168.1.230"))
+        assertTrue(summary.detail.contains("203.0.113.30"))
     }
 
     @Test
