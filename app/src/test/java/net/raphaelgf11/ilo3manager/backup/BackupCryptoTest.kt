@@ -47,7 +47,16 @@ class BackupCryptoTest {
     @Test
     fun detectsTamperedCiphertext() {
         val sealed = String(BackupCrypto.encrypt(plaintext, "x"))
-        val corrupted = sealed.replace(Regex(""""ciphertext":"."""), """"ciphertext":"Z""")
+        // Swap the first ciphertext character for a *different* one. Substituting a fixed letter
+        // silently did nothing on the roughly one run in sixty-four where the ciphertext already
+        // started with it, and the untampered payload then decrypted fine — a test that failed at
+        // random and pointed at the wrong thing when it did.
+        val corrupted = sealed.replace(Regex(""""ciphertext":"(.)""")) { match ->
+            val first = match.groupValues[1]
+            val replacement = if (first == "Z") "Y" else "Z"
+            """"ciphertext":"$replacement"""
+        }
+        assertNotEquals("le brouillage doit vraiment modifier le chiffré", sealed, corrupted)
         assertThrows(Exception::class.java) { BackupCrypto.decrypt(corrupted.toByteArray(), "x") }
     }
 }
