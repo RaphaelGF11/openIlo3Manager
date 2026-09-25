@@ -9,7 +9,7 @@ import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.Scope
 import net.raphaelgf11.ilo3manager.data.HostRepository
-import net.raphaelgf11.ilo3manager.data.SshHost
+import net.raphaelgf11.ilo3manager.data.NetworkRepository
 import java.io.IOException
 
 /** Scope for the private application data folder — it grants no access to the user's own files. */
@@ -66,19 +66,28 @@ object DriveSync {
         GoogleAuthUtil.getToken(context, account, "oauth2:$DRIVE_APPDATA_SCOPE")
 
     /** Encrypts the current configuration and uploads it, replacing any previous backup. */
-    fun backup(context: Context, repository: HostRepository, secret: String) {
+    fun backup(
+        context: Context,
+        repository: HostRepository,
+        networkRepository: NetworkRepository,
+        secret: String,
+    ) {
         val account = signedInAccount(context)?.account
             ?: throw IOException("Aucun compte Google connecté.")
-        val payload = BackupPayload.serialize(repository.getHosts())
+        // Networks travel with the hosts: they hold the tunnel a host needs to be reachable at all,
+        // so a backup without them restores servers that can reach nothing.
+        val payload = BackupPayload.serialize(
+            BackupContents(repository.getHosts(), networkRepository.getNetworks()),
+        )
         val sealed = BackupCrypto.encrypt(payload, secret)
         DriveAppDataClient(tokenFor(context, account)).upload(sealed)
     }
 
     /**
-     * Downloads and decrypts the backup. Returns the hosts it contains without writing anything,
-     * so the caller can confirm before replacing what is on the device.
+     * Downloads and decrypts the backup. Returns what it contains without writing anything, so the
+     * caller can confirm before replacing what is on the device.
      */
-    fun fetchBackup(context: Context, secret: String): List<SshHost> {
+    fun fetchBackup(context: Context, secret: String): BackupContents {
         val account = signedInAccount(context)?.account
             ?: throw IOException("Aucun compte Google connecté.")
         val sealed = DriveAppDataClient(tokenFor(context, account)).download()

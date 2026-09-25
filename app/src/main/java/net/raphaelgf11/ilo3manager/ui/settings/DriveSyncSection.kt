@@ -37,6 +37,7 @@ import kotlinx.coroutines.withContext
 import net.raphaelgf11.ilo3manager.backup.BackupSecretStore
 import net.raphaelgf11.ilo3manager.backup.DriveSync
 import net.raphaelgf11.ilo3manager.data.HostRepository
+import net.raphaelgf11.ilo3manager.data.NetworkRepository
 import java.text.DateFormat
 import java.util.Date
 
@@ -50,6 +51,7 @@ import java.util.Date
 @Composable
 fun DriveSyncSection(hostRepository: HostRepository) {
     val context = LocalContext.current
+    val networkRepository = remember { NetworkRepository(context) }
     val scope = rememberCoroutineScope()
     val secretStore = remember { BackupSecretStore(context) }
 
@@ -209,7 +211,7 @@ fun DriveSyncSection(hostRepository: HostRepository) {
             Button(
                 onClick = {
                     run("la sauvegarde") {
-                        DriveSync.backup(context, hostRepository, secret)
+                        DriveSync.backup(context, hostRepository, networkRepository, secret)
                         val now = System.currentTimeMillis()
                         secretStore.lastSyncAt = now
                         lastSync = now
@@ -224,11 +226,16 @@ fun DriveSyncSection(hostRepository: HostRepository) {
             OutlinedButton(
                 onClick = {
                     run("la restauration") {
-                        val hosts = DriveSync.fetchBackup(context, secret)
+                        val contents = DriveSync.fetchBackup(context, secret)
                         // Written only once decryption has succeeded, so a wrong secret or an
                         // unreadable backup can never leave the device half-restored.
-                        hostRepository.reorderHosts(hosts)
-                        "${hosts.size} hôte(s) restauré(s)."
+                        networkRepository.replaceAll(contents.networks)
+                        hostRepository.reorderHosts(contents.hosts)
+                        // A version 1 backup carries no networks, only the old per-host fields;
+                        // folding them now means the restore is complete when it says it is,
+                        // rather than at the next launch.
+                        networkRepository.migrateLegacyVpn(hostRepository)
+                        "${contents.hosts.size} hôte(s) et ${networkRepository.getNetworks().size} réseau(x) restauré(s)."
                     }
                 },
                 enabled = !busy && account != null && hasConsent && secret.isNotBlank(),
