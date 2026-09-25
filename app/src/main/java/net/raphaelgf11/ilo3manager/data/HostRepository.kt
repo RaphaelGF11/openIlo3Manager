@@ -75,6 +75,9 @@ class HostRepository(context: Context) {
         put("hardwareOverIpmi", host.hardwareOverIpmi)
         put("alwaysOpenSsh", host.alwaysOpenSsh)
         put("notificationsOverIpmi", host.notificationsOverIpmi)
+        put("instantAlertMode", host.instantAlertMode.name)
+        put("alertGatewayUrl", host.alertGatewayUrl)
+        put("networkId", host.networkId)
         put("vpnType", host.vpnType.name)
         put("wireGuardConfig", host.wireGuardConfig)
         put("sshTunnelConfig", host.sshTunnelConfig)
@@ -105,6 +108,10 @@ class HostRepository(context: Context) {
         hardwareOverIpmi = o.optBoolean("hardwareOverIpmi", false),
         alwaysOpenSsh = o.optBoolean("alwaysOpenSsh", false),
         notificationsOverIpmi = o.optBoolean("notificationsOverIpmi", false),
+        instantAlertMode = runCatching { InstantAlertMode.valueOf(o.optString("instantAlertMode")) }
+            .getOrDefault(InstantAlertMode.DISABLED),
+        alertGatewayUrl = o.optString("alertGatewayUrl", ""),
+        networkId = o.optString("networkId", ""),
         vpnType = runCatching { VpnType.valueOf(o.optString("vpnType", "NONE")) }.getOrDefault(VpnType.NONE),
         // "vpnConfig" was a single shared field before each type got its own; map it onto the
         // matching one so an existing configuration survives the upgrade.

@@ -19,6 +19,13 @@
     <uses-permission
         android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
+    <!-- Non-standard, and honoured only by the CyanogenMod/LineageOS lineage of superuser
+         managers, which warns on screen when an app asks for root without declaring it. Harmless
+         everywhere else, and only ever exercised by the "adresse secondaire" network type. -->
+    <uses-permission
+        android:name="android.permission.ACCESS_SUPERUSER"
+        tools:ignore="ProtectedPermissions" />
+
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application

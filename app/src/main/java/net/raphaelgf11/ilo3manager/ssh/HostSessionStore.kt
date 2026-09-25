@@ -69,14 +69,15 @@ object HostSessionStore {
     fun disconnectAll(hostId: String) {
         controlSessions[hostId]?.disconnect()
         vspSessions[hostId]?.disconnect()
-        // The jump-host session outlives the sessions it carries, so it has to be closed too.
-        HostTunnelManager.close(hostId)
+        // The tunnel outlives the sessions it carries, so it has to be released too — and only
+        // goes down if no other host is behind the same network.
+        HostTunnelManager.releaseHost(hostId)
     }
 
     fun dropSessionsFor(hostId: String) {
         controlSessions.remove(hostId)?.disconnect()
         vspSessions.remove(hostId)?.disconnect()
-        HostTunnelManager.close(hostId)
+        HostTunnelManager.releaseHost(hostId)
         _revision.value++
     }
 }

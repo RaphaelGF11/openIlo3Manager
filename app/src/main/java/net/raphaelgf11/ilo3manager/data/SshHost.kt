@@ -79,17 +79,26 @@ data class SshHost(
      * already makes.
      */
     val notificationsOverIpmi: Boolean = false,
-    val vpnType: VpnType = VpnType.NONE,
+    /** How incidents reach the phone between two periodic checks; see [InstantAlertMode]. */
+    val instantAlertMode: InstantAlertMode = InstantAlertMode.DISABLED,
+    /** Host:port of the self-hosted relay, for the gateway mode. */
+    val alertGatewayUrl: String = "",
     /**
-     * Each tunnel type keeps its own field rather than sharing one.
+     * The named network this host is reached through, or blank to connect directly.
      *
-     * A single shared field leaked across types: after configuring an SSH jump host, selecting
-     * WireGuard showed that tunnel's JSON — including its password — in the WireGuard text area,
-     * which is not masked. Separate fields also mean switching type back and forth no longer
-     * discards a configuration. Both hold secrets, so both are encrypted with the rest of the
-     * record.
+     * See [NetworkConfig]. Replaces the per-host tunnel fields below, which two servers behind the
+     * same VPN could only duplicate.
      */
+    val networkId: String = "",
+    /**
+     * Superseded by [networkId], and kept only so an existing configuration can be folded into a
+     * named network on upgrade. Nothing should read these to decide how to connect.
+     */
+    @Deprecated("Migrated into NetworkConfig; see foldLegacyVpn")
+    val vpnType: VpnType = VpnType.NONE,
+    @Deprecated("Migrated into NetworkConfig; see foldLegacyVpn")
     val wireGuardConfig: String = "",
+    @Deprecated("Migrated into NetworkConfig; see foldLegacyVpn")
     val sshTunnelConfig: String = "",
     /**
      * One address per embedded network port, in panel order, blank where unknown.
