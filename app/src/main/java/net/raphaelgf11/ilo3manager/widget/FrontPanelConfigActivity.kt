@@ -242,11 +242,17 @@ private fun SensorDiagnostic(host: SshHost) {
  * front panel's network indicators therefore cannot be driven from either interface the app can
  * reach: IPMI has no NIC sensor and the web API reports no link. `health_summary` is the useful
  * one, carrying the same per-subsystem verdicts the chassis panel itself shows.
+ *
+ * `rc_info` is what arms the remote console. The iLO's own Java applet asks for it before opening
+ * anything, and answers with the console port, the virtual media port, and the keys guarding both;
+ * port 17988 accepts a connection but stays silent until a session has been through here. It needs
+ * the Advanced licence, so a refusal is itself the answer to whether the licence took.
  */
 private val PROBE_ENDPOINTS = listOf(
     "/json/nic_info",
     "/json/health_summary",
     "/json/overview",
+    "/json/rc_info",
 )
 
 /**
