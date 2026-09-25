@@ -45,6 +45,14 @@ enum class IpmiPrivilege(val level: Int, val label: String) {
 /** Retransmissions before giving up on a datagram. */
 private const val RETRY_ATTEMPTS = 3
 
+/**
+ * RMCP+ status codes that say the account itself was turned away.
+ *
+ * Everything else — a busy BMC, an expired session id — can succeed on a second try, so only these
+ * are reported as [IpmiRefusedException] and spare the caller from repeating the poll.
+ */
+private val DEFINITIVE_REFUSALS = setOf(0x09, 0x0A, 0x0C, 0x0D, 0x0F)
+
 enum class ChassisPowerState { ON, OFF, UNKNOWN }
 
 /** Decoded Get Chassis Status reply: power state plus the chassis-level fault indicators. */
@@ -173,7 +181,7 @@ class IpmiLanClient(
         val actual = rakp2.copyOfRange(40, minOf(rakp2.size, 60))
         if (!expected.copyOf(actual.size).contentEquals(actual)) {
             close()
-            throw IOException("Authentification IPMI refusée (identifiants incorrects ?)")
+            throw IpmiRefusedException("Authentification IPMI refusée (identifiants incorrects ?)")
         }
 
         val rakp3AuthData = concat(
@@ -209,7 +217,13 @@ class IpmiLanClient(
             0x11 -> "aucune suite de chiffrement commune"
             else -> "code 0x%02x".format(status)
         }
-        throw IOException("L'iLO a refusé l'$stage : $reason.")
+        val message = "L'iLO a refusé l'$stage : $reason."
+        // A busy BMC or a stale session id is worth trying again; a rejected account is not.
+        throw if (status in DEFINITIVE_REFUSALS) {
+            IpmiRefusedException(message)
+        } else {
+            IOException(message)
+        }
     }
 
     /**

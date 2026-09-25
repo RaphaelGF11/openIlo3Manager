@@ -11,6 +11,7 @@ import net.raphaelgf11.ilo3manager.ipmi.IpmiLanClient
 import net.raphaelgf11.ilo3manager.ipmi.IpmiSensor
 import net.raphaelgf11.ilo3manager.ipmi.IpmiSensorReader
 import net.raphaelgf11.ilo3manager.ipmi.SensorHealth
+import net.raphaelgf11.ilo3manager.ipmi.retryingIpmiPoll
 import net.raphaelgf11.ilo3manager.vpn.HostTunnelManager
 
 /**
@@ -21,8 +22,16 @@ import net.raphaelgf11.ilo3manager.vpn.HostTunnelManager
  */
 object PanelReader {
 
-    /** Blocking. Opens a session, takes one reading and closes it again. */
-    fun read(host: SshHost): PanelState {
+    /**
+     * Blocking. Takes one reading, and two more shots at it if that one fails.
+     *
+     * IPMI is UDP, and the widget refreshes unattended: a poll lost to the network would blank the
+     * panel until the next tick, which reads as "the server went away". A fresh session costs a
+     * second or two, far less than showing a dark panel for a machine that is running.
+     */
+    fun read(host: SshHost): PanelState = retryingIpmiPoll { readOnce(host) }
+
+    private fun readOnce(host: SshHost): PanelState {
         val endpoint = HostTunnelManager.endpointFor(host, host.ipmiPort, udp = true)
         val client = IpmiLanClient(
             endpoint.host,

@@ -1,5 +1,6 @@
 package net.raphaelgf11.ilo3manager.notify
 
+import kotlinx.coroutines.delay
 import net.raphaelgf11.ilo3manager.data.SshHost
 import net.raphaelgf11.ilo3manager.ilo.HealthLevel
 import net.raphaelgf11.ilo3manager.ilo.IloCliParser
@@ -8,6 +9,7 @@ import net.raphaelgf11.ilo3manager.ilo.IpmiSdrCache
 import net.raphaelgf11.ilo3manager.ipmi.ChassisPowerState
 import net.raphaelgf11.ilo3manager.ipmi.IpmiLanClient
 import net.raphaelgf11.ilo3manager.ipmi.SensorHealth
+import net.raphaelgf11.ilo3manager.ipmi.retryingIpmiPoll
 import net.raphaelgf11.ilo3manager.ssh.IloCliClient
 import net.raphaelgf11.ilo3manager.vpn.HostTunnelManager
 
@@ -42,13 +44,29 @@ object HardwareMonitorCheck {
             HostTunnelManager.supportsUdp(host)
 
     /**
+     * The IPMI check, given two more chances before the round is called a failure.
+     *
+     * A missed round here is not a blank cell in a graph: it is a "serveur injoignable" notification
+     * on the user's phone. IPMI runs over UDP, so a poll fails now and then with the machine
+     * perfectly healthy, and a whole fresh session costs far less than a false alarm.
+     */
+    private suspend fun checkOverIpmi(host: SshHost): Result =
+        try {
+            retryingIpmiPoll(pause = { delay(it) }) { pollOverIpmi(host) }
+        } catch (e: Exception) {
+            Result.Failure(e.message ?: "Connexion IPMI impossible")
+        }
+
+    /**
      * One IPMI session: chassis status for power, then the sensors for health.
      *
      * Chassis status alone is not a health signal — its fault bits stay clear for a failed power
      * supply — so the sensors have to be read too. The repository is cached across sessions, so
      * only the first round pays for enumerating it.
+     *
+     * Throws rather than returning a failure, so that [checkOverIpmi] can start over.
      */
-    private fun checkOverIpmi(host: SshHost): Result {
+    private fun pollOverIpmi(host: SshHost): Result.Success {
         val endpoint = HostTunnelManager.endpointFor(host, host.ipmiPort, udp = true)
         val ipmi = IpmiLanClient(endpoint.host, endpoint.port, host.username, host.password, host.ipmiPrivilege)
         return try {
@@ -77,8 +95,6 @@ object HardwareMonitorCheck {
                 else -> HealthLevel.OK
             }
             Result.Success(power, health, degraded)
-        } catch (e: Exception) {
-            Result.Failure(e.message ?: "Connexion IPMI impossible")
         } finally {
             ipmi.close()
         }
