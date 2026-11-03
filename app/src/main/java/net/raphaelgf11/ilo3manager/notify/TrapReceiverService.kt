@@ -37,7 +37,7 @@ class TrapReceiverService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         ensureChannel()
-        startForeground(NOTIFICATION_ID, statusNotification("Démarrage…"))
+        startForeground(NOTIFICATION_ID, statusNotification(getString(R.string.notification_traps_starting)))
         rebuild()
         // Restarted if the system kills it: the socket is the feature.
         return START_STICKY
@@ -66,9 +66,9 @@ class TrapReceiverService : Service() {
 
         val listening = watchers.size
         val text = when {
-            listening == 0 && failures.isEmpty() -> "Aucun serveur en alerte instantanée"
-            failures.isEmpty() -> "À l'écoute des alertes de $listening serveur(s)"
-            else -> "À l'écoute de $listening serveur(s) ; ${failures.size} en échec"
+            listening == 0 && failures.isEmpty() -> getString(R.string.notification_traps_none)
+            failures.isEmpty() -> getString(R.string.notification_traps_listening, listening)
+            else -> getString(R.string.notification_traps_failures, listening, failures.size)
         }
         notificationManager()?.notify(NOTIFICATION_ID, statusNotification(text))
     }
@@ -96,7 +96,7 @@ class TrapReceiverService : Service() {
     }
 
     private fun report(host: SshHost, trap: SnmpTrap) {
-        val summary = describeTrap(trap, host.name)
+        val summary = describeTrap(trap, host.name, resources)
         // Distinct from the status notification, and one per host so a second server's alert does
         // not replace the first.
         NotificationHelper.notify(
@@ -113,7 +113,7 @@ class TrapReceiverService : Service() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val channel = NotificationChannel(
             STATUS_CHANNEL_ID,
-            "Écoute des alertes",
+            getString(R.string.notification_channel_traps),
             // Low: this one only says the listener is up. The alerts themselves go to the
             // hardware-alert channel, which is where the user wants to be interrupted.
             NotificationManager.IMPORTANCE_LOW,
@@ -124,7 +124,7 @@ class TrapReceiverService : Service() {
 
     private fun statusNotification(text: String): Notification =
         NotificationCompat.Builder(this, STATUS_CHANNEL_ID)
-            .setContentTitle("Alertes instantanées")
+            .setContentTitle(getString(R.string.notification_traps_title))
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_notification)
             .setOngoing(true)

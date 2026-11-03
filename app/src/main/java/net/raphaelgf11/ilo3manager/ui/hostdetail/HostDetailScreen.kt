@@ -24,11 +24,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.raphaelgf11.ilo3manager.data.HostRepository
+import net.raphaelgf11.ilo3manager.R
 import net.raphaelgf11.ilo3manager.data.HostTab
 import net.raphaelgf11.ilo3manager.data.SettingsRepository
 import net.raphaelgf11.ilo3manager.data.SshHost
@@ -40,6 +42,7 @@ import net.raphaelgf11.ilo3manager.ui.dashboard.PowerHealthTab
 import net.raphaelgf11.ilo3manager.ui.hardware.HardwareTab
 import net.raphaelgf11.ilo3manager.ui.vsp.VspTab
 import net.raphaelgf11.ilo3manager.ui.webgateway.WebGatewayTab
+import net.raphaelgf11.ilo3manager.ui.common.titleResource
 import net.raphaelgf11.ilo3manager.webgateway.WebGatewayManager
 
 /** Tabs available for a host: everything, or the gateway alone when no credentials are stored. */
@@ -95,7 +98,7 @@ fun HostDetailScreen(
                 title = { Text(host.name) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Retour")
+                        Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
@@ -112,7 +115,7 @@ fun HostDetailScreen(
                             onBack()
                         },
                     ) {
-                        Icon(Icons.Filled.Close, contentDescription = "Fermer la connexion")
+                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.common_close_connection))
                     }
                 },
             )
@@ -128,7 +131,7 @@ fun HostDetailScreen(
                     Tab(
                         selected = selectedTab == index,
                         onClick = { selectedTab = index },
-                        text = { Text(tab.title) },
+                        text = { Text(stringResource(tab.titleResource())) },
                     )
                 }
             }

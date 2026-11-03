@@ -26,11 +26,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.raphaelgf11.ilo3manager.data.SshHost
+import net.raphaelgf11.ilo3manager.R
 import net.raphaelgf11.ilo3manager.data.WebGatewaySettings
 import net.raphaelgf11.ilo3manager.data.WebGatewaySettingsRepository
 import net.raphaelgf11.ilo3manager.webgateway.WebGatewayManager
@@ -80,17 +82,18 @@ fun WebGatewayTab(host: SshHost) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(
-            text = if (isRunning) "Passerelle : en cours d'exécution" else "Passerelle : arrêtée",
+            text = stringResource(if (isRunning) R.string.gateway_running else R.string.gateway_stopped),
             style = MaterialTheme.typography.titleMedium,
         )
         if (isRunning && port != null) {
             val address = if (exposeAllInterfaces) lanIpv4Address() ?: "127.0.0.1" else "127.0.0.1"
             val scheme = if (runningWithHttps) "https" else "http"
-            Text("Adresse : $scheme://$address:$port")
+            port?.let { activePort ->
+                Text(stringResource(R.string.gateway_address, scheme, address, activePort))
+            }
         }
         Text(
-            "Ouvre l'interface web de l'iLO (${host.hostname}:${host.httpsPort}) via une passerelle locale, " +
-                "car son TLS trop ancien n'est accepté par aucun navigateur moderne directement.",
+            stringResource(R.string.gateway_description, host.hostname, host.httpsPort),
             style = MaterialTheme.typography.bodySmall,
         )
         if (error != null) {
@@ -103,11 +106,10 @@ fun WebGatewayTab(host: SshHost) {
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("Exposer sur toutes les interfaces (y compris IPv6)")
+                Text(stringResource(R.string.gateway_expose_all))
                 if (exposeAllInterfaces) {
                     Text(
-                        "Attention : la passerelle ne sera alors plus limitée à cet appareil — tout " +
-                            "autre appareil du même réseau pourra y accéder sans authentification.",
+                        stringResource(R.string.gateway_expose_warning),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -125,7 +127,7 @@ fun WebGatewayTab(host: SshHost) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text("HTTPS local (certificat auto-signé)", modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.gateway_https), modifier = Modifier.weight(1f))
             Switch(
                 checked = useHttps,
                 onCheckedChange = { useHttps = it; persist() },
@@ -136,13 +138,13 @@ fun WebGatewayTab(host: SshHost) {
         OutlinedTextField(
             value = forcedPortText,
             onValueChange = { forcedPortText = it.filter { c -> c.isDigit() }; persist() },
-            label = { Text("Forcer un port (optionnel, sinon aléatoire)") },
+            label = { Text(stringResource(R.string.gateway_forced_port)) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             enabled = !isRunning,
             modifier = Modifier.fillMaxWidth(),
         )
         Text(
-            "Un port < 1024 est privilégié et nécessite un appareil rooté.",
+            stringResource(R.string.gateway_privileged_port),
             style = MaterialTheme.typography.bodySmall,
         )
 
@@ -169,7 +171,7 @@ fun WebGatewayTab(host: SshHost) {
                             runningWithHttps = useHttps
                         }
                     } catch (e: Exception) {
-                        error = e.message ?: "Échec de la passerelle"
+                        error = e.message ?: context.getString(R.string.gateway_start_failed)
                     } finally {
                         busy = false
                     }
@@ -178,7 +180,7 @@ fun WebGatewayTab(host: SshHost) {
             enabled = !busy,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(if (isRunning) "Arrêter la passerelle" else "Démarrer la passerelle")
+            Text(stringResource(if (isRunning) R.string.gateway_stop else R.string.gateway_start))
         }
 
         OutlinedButton(
@@ -191,7 +193,7 @@ fun WebGatewayTab(host: SshHost) {
             enabled = isRunning && port != null,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("Ouvrir dans le navigateur")
+            Text(stringResource(R.string.gateway_open_browser))
         }
     }
 }

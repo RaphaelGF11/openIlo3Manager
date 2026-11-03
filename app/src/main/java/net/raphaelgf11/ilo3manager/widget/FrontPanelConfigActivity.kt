@@ -32,12 +32,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.raphaelgf11.ilo3manager.data.HostRepository
+import net.raphaelgf11.ilo3manager.R
 import net.raphaelgf11.ilo3manager.ilo.IloWebApiClient
 import net.raphaelgf11.ilo3manager.ipmi.IpmiSensor
 import net.raphaelgf11.ilo3manager.data.SshHost
@@ -95,11 +97,11 @@ class FrontPanelConfigActivity : ComponentActivity() {
 }
 
 private val PREVIEWS = listOf(
-    "Injoignable" to PanelState.DARK,
-    "Éteint" to PanelState(power = PowerLed.OFF),
-    "En marche" to PanelState(power = PowerLed.ON, health = HealthLed.GREEN),
-    "UID allumé" to PanelState(power = PowerLed.ON, health = HealthLed.GREEN, uid = true),
-    "Défaut" to PanelState(
+    R.string.widget_preview_unreachable to PanelState.DARK,
+    R.string.widget_preview_off to PanelState(power = PowerLed.OFF),
+    R.string.widget_preview_running to PanelState(power = PowerLed.ON, health = HealthLed.GREEN),
+    R.string.widget_preview_uid to PanelState(power = PowerLed.ON, health = HealthLed.GREEN, uid = true),
+    R.string.widget_preview_fault to PanelState(
         power = PowerLed.ON,
         health = HealthLed.AMBER,
         psus = listOf(Led.OFF, Led.AMBER),
@@ -107,7 +109,7 @@ private val PREVIEWS = listOf(
         dimmsLeft = List(9) { if (it == 2) Led.AMBER else Led.OFF },
     ),
     // Critical shows red on the health LED only: the component indicators have no red state.
-    "Critique" to PanelState(
+    R.string.widget_preview_critical to PanelState(
         power = PowerLed.ON,
         health = HealthLed.RED,
         procs = listOf(Led.AMBER, Led.OFF),
@@ -121,6 +123,7 @@ private fun ConfigScreen(
     onConfirm: (SshHost) -> Unit,
     confirmEnabled: Boolean,
 ) {
+    val context = LocalContext.current
     var selected by remember { mutableStateOf(hosts.firstOrNull()) }
     var preview by remember { mutableStateOf(2) }
 
@@ -136,14 +139,14 @@ private fun ConfigScreen(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Panneau avant", style = MaterialTheme.typography.titleLarge)
+        Text(stringResource(R.string.widget_panel_title), style = MaterialTheme.typography.titleLarge)
 
         val bitmap = remember(preview) {
-            FrontPanelRenderer.render(PREVIEWS[preview].second, widthPx = 1080)
+            FrontPanelRenderer.render(PREVIEWS[preview].second, widthPx = 1080, resources = context.resources)
         }
         Image(
             bitmap = bitmap.asImageBitmap(),
-            contentDescription = PREVIEWS[preview].first,
+            contentDescription = stringResource(PREVIEWS[preview].first),
             modifier = Modifier.fillMaxWidth(),
         )
 
@@ -155,22 +158,21 @@ private fun ConfigScreen(
                 FilterChip(
                     selected = preview == index,
                     onClick = { preview = index },
-                    label = { Text(label) },
+                    label = { Text(stringResource(label)) },
                 )
             }
         }
 
         Text(
-            "Le panneau est lu par IPMI uniquement : SSH serait trop lent pour un rafraîchissement " +
-                "en arrière-plan. L'hôte choisi doit donc avoir IPMI activé.",
+            stringResource(R.string.widget_panel_ipmi_help),
             style = MaterialTheme.typography.bodySmall,
         )
 
         UsageAccessNotice()
 
-        Text("Serveur", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.widget_server), style = MaterialTheme.typography.titleMedium)
         if (hosts.isEmpty()) {
-            Text("Aucun hôte enregistré.", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.widget_no_hosts), style = MaterialTheme.typography.bodySmall)
         }
         hosts.forEach { host ->
             Row(host = host, selected = selected?.id == host.id, onSelect = { selected = host })
@@ -181,7 +183,7 @@ private fun ConfigScreen(
             enabled = confirmEnabled && selected != null,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("Ajouter le widget")
+            Text(stringResource(R.string.widget_add))
         }
 
         selected?.let { SensorDiagnostic(host = it) }
@@ -198,6 +200,7 @@ private fun ConfigScreen(
  */
 @Composable
 private fun SensorDiagnostic(host: SshHost) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var sensors by remember(host.id) { mutableStateOf<List<IpmiSensor>?>(null) }
     var error by remember(host.id) { mutableStateOf<String?>(null) }
@@ -210,25 +213,25 @@ private fun SensorDiagnostic(host: SshHost) {
             scope.launch {
                 runCatching { withContext(Dispatchers.IO) { PanelReader.readAllSensors(host) } }
                     .onSuccess { sensors = it }
-                    .onFailure { error = it.message ?: "Lecture impossible" }
+                    .onFailure { error = it.message ?: context.getString(R.string.widget_sensor_read_failed) }
                 loading = false
             }
         },
         enabled = !loading && host.ipmiEnabled,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Text(if (loading) "Lecture des capteurs…" else "Voir les capteurs détectés")
+        Text(stringResource(if (loading) R.string.widget_reading_sensors else R.string.widget_detect_sensors))
     }
 
     error?.let {
         Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
     }
     sensors?.let { list ->
-        Text("${list.size} capteur(s)", style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(R.string.widget_sensor_count, list.size), style = MaterialTheme.typography.titleSmall)
         list.forEach { sensor ->
             Text(
                 "${sensor.name} — ${sensor.reading} — ${sensor.health}" +
-                    if (sensor.eventReadingType != 0x01) " — états 0x%02x".format(sensor.states) else "",
+                    if (sensor.eventReadingType != 0x01) " — ${context.getString(R.string.widget_sensor_states, sensor.states)}" else "",
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -263,6 +266,7 @@ private val PROBE_ENDPOINTS = listOf(
  */
 @Composable
 private fun WebApiProbe(host: SshHost) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var results by remember(host.id) { mutableStateOf<List<IloWebApiClient.ProbeResult>?>(null) }
     var error by remember(host.id) { mutableStateOf<String?>(null) }
@@ -279,14 +283,14 @@ private fun WebApiProbe(host: SshHost) {
                     }
                 }
                     .onSuccess { results = it }
-                    .onFailure { error = it.message ?: "Échec de la requête" }
+                    .onFailure { error = it.message ?: context.getString(R.string.widget_probe_failed) }
                 loading = false
             }
         },
         enabled = !loading && host.password.isNotBlank(),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Text(if (loading) "Interrogation de l'API iLO…" else "Sonder l'API web de l'iLO")
+        Text(stringResource(if (loading) R.string.widget_probe_running else R.string.widget_probe_api))
     }
 
     error?.let {
@@ -294,7 +298,7 @@ private fun WebApiProbe(host: SshHost) {
     }
     results?.forEach { result ->
         Text(
-            "${result.path} — ${if (result.ok) "OK" else "refusé"}",
+            "${result.path} — ${context.getString(if (result.ok) R.string.widget_probe_accepted else R.string.widget_probe_refused)}",
             style = MaterialTheme.typography.titleSmall,
         )
         Text(result.body.take(4000), style = MaterialTheme.typography.bodySmall)
@@ -314,23 +318,18 @@ private fun UsageAccessNotice() {
 
     if (granted.value) {
         Text(
-            "Le panneau se rafraîchira à l'intervalle configuré tant que vous serez sur l'écran " +
-                "d'accueil.",
+            stringResource(R.string.widget_usage_ready),
             style = MaterialTheme.typography.bodySmall,
         )
         return
     }
 
     Text(
-        "Pour se rafraîchir pendant que vous regardez l'écran d'accueil, le widget a besoin de " +
-            "l'accès aux données d'utilisation — la seule façon sous Android de savoir que le " +
-            "lanceur est au premier plan. Sans cette autorisation, il se met à jour au " +
-            "déverrouillage et toutes les 30 minutes.",
+        stringResource(R.string.widget_usage_help),
         style = MaterialTheme.typography.bodySmall,
     )
     Text(
-        "Elle sert uniquement à comparer l'application au premier plan au lanceur ; rien n'est " +
-            "enregistré ni transmis.",
+        stringResource(R.string.widget_usage_privacy),
         style = MaterialTheme.typography.bodySmall,
     )
     androidx.compose.material3.OutlinedButton(
@@ -339,7 +338,7 @@ private fun UsageAccessNotice() {
         },
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Text("Accorder l'accès aux données d'utilisation")
+        Text(stringResource(R.string.widget_usage_grant))
     }
 }
 
@@ -355,7 +354,7 @@ private fun Row(host: SshHost, selected: Boolean, onSelect: () -> Unit) {
         Column {
             Text(host.name)
             Text(
-                if (host.ipmiEnabled) "IPMI activé" else "IPMI désactivé — le widget restera vide",
+                stringResource(if (host.ipmiEnabled) R.string.widget_host_ipmi_enabled else R.string.widget_host_ipmi_disabled),
                 style = MaterialTheme.typography.bodySmall,
                 color = if (host.ipmiEnabled) {
                     MaterialTheme.colorScheme.onSurfaceVariant

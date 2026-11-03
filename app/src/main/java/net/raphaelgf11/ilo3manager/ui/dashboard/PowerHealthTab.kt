@@ -22,10 +22,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import net.raphaelgf11.ilo3manager.data.SettingsRepository
+import net.raphaelgf11.ilo3manager.R
 import net.raphaelgf11.ilo3manager.ilo.ControlSessionController
 import net.raphaelgf11.ilo3manager.ilo.HealthLevel
 import net.raphaelgf11.ilo3manager.ilo.PowerAction
@@ -79,12 +81,12 @@ fun PowerHealthTab(controller: ControlSessionController, settingsRepository: Set
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 CircularProgressIndicator()
-                Text(progress ?: "Connexion en cours…")
+                Text(progress ?: stringResource(R.string.common_connecting))
             }
             ConnectionState.ERROR, ConnectionState.DISCONNECTED -> {
-                Text(error ?: "Non connecté")
+                Text(error ?: stringResource(R.string.power_not_connected))
                 Button(onClick = { controller.connectAndLoadDashboard() }) {
-                    Text("Reconnexion")
+                    Text(stringResource(R.string.power_reconnect))
                 }
             }
             ConnectionState.CONNECTED -> {
@@ -92,10 +94,10 @@ fun PowerHealthTab(controller: ControlSessionController, settingsRepository: Set
                     StatusDot(indicator = indicator, size = 16.dp)
                     Text(
                         text = when (health) {
-                            HealthLevel.OK -> "État général : normal"
-                            HealthLevel.DEGRADED -> "État général : dégradé (erreur non critique)"
-                            HealthLevel.CRITICAL -> "État général : critique"
-                            HealthLevel.UNKNOWN -> "État général : inconnu"
+                            HealthLevel.OK -> stringResource(R.string.health_normal)
+                            HealthLevel.DEGRADED -> stringResource(R.string.health_degraded)
+                            HealthLevel.CRITICAL -> stringResource(R.string.health_critical)
+                            HealthLevel.UNKNOWN -> stringResource(R.string.health_unknown)
                         },
                         style = MaterialTheme.typography.titleMedium,
                     )
@@ -104,9 +106,9 @@ fun PowerHealthTab(controller: ControlSessionController, settingsRepository: Set
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
                         text = when (powerState) {
-                            PowerState.ON -> "Alimentation : allumé"
-                            PowerState.OFF -> "Alimentation : éteint"
-                            PowerState.UNKNOWN -> "Alimentation : inconnue"
+                            PowerState.ON -> stringResource(R.string.power_state_on)
+                            PowerState.OFF -> stringResource(R.string.power_state_off)
+                            PowerState.UNKNOWN -> stringResource(R.string.power_state_unknown)
                         },
                         style = MaterialTheme.typography.titleMedium,
                     )
@@ -122,21 +124,21 @@ fun PowerHealthTab(controller: ControlSessionController, settingsRepository: Set
                         enabled = !actionInProgress && powerState != PowerState.ON,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("Démarrer")
+                        Text(stringResource(R.string.power_start))
                     }
                     OutlinedButton(
                         onClick = { pendingAction = PowerAction.RESET },
                         enabled = !actionInProgress && powerState == PowerState.ON,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("Redémarrer")
+                        Text(stringResource(R.string.power_restart))
                     }
                     OutlinedButton(
                         onClick = { pendingAction = PowerAction.OFF },
                         enabled = !actionInProgress && powerState == PowerState.ON,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("Arrêter (normal)")
+                        Text(stringResource(R.string.power_stop))
                     }
                     OutlinedButton(
                         onClick = { pendingAction = PowerAction.FORCE_OFF },
@@ -144,7 +146,7 @@ fun PowerHealthTab(controller: ControlSessionController, settingsRepository: Set
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("Forcer l'arrêt")
+                        Text(stringResource(R.string.power_force_stop))
                     }
                     if (controller.canReadIdentify) {
                         // The state is readable, so one button that reflects it is honest.
@@ -153,7 +155,11 @@ fun PowerHealthTab(controller: ControlSessionController, settingsRepository: Set
                             enabled = !actionInProgress,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Text(if (identifyOn) "Éteindre la LED UID" else "Allumer la LED UID")
+                            Text(
+                                stringResource(
+                                    if (identifyOn) R.string.power_uid_turn_off else R.string.power_uid_turn_on,
+                                ),
+                            )
                         }
                     } else {
                         // Over SSH the LED can be set but not read, so a single toggle would have
@@ -167,14 +173,14 @@ fun PowerHealthTab(controller: ControlSessionController, settingsRepository: Set
                                 enabled = !actionInProgress,
                                 modifier = Modifier.weight(1f),
                             ) {
-                                Text("LED UID allumée")
+                                Text(stringResource(R.string.power_uid_on))
                             }
                             OutlinedButton(
                                 onClick = { controller.setIdentify(false) },
                                 enabled = !actionInProgress,
                                 modifier = Modifier.weight(1f),
                             ) {
-                                Text("LED UID éteinte")
+                                Text(stringResource(R.string.power_uid_off))
                             }
                         }
                     }
@@ -190,7 +196,7 @@ fun PowerHealthTab(controller: ControlSessionController, settingsRepository: Set
                             )
                             androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(start = 8.dp))
                         }
-                        Text("Rafraîchir")
+                        Text(stringResource(R.string.common_refresh))
                     }
                 }
             }

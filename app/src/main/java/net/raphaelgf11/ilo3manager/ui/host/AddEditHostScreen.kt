@@ -1,6 +1,7 @@
 package net.raphaelgf11.ilo3manager.ui.host
 
 import android.net.Uri
+import androidx.annotation.StringRes
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -49,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -56,6 +58,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.raphaelgf11.ilo3manager.data.AuthMethod
+import net.raphaelgf11.ilo3manager.R
 import net.raphaelgf11.ilo3manager.data.HostNotificationSettings
 import net.raphaelgf11.ilo3manager.notify.MonitorScheduler
 import net.raphaelgf11.ilo3manager.notify.SnmpDirectActions
@@ -74,6 +77,9 @@ import net.raphaelgf11.ilo3manager.ipmi.IpmiPrivilege
 import net.raphaelgf11.ilo3manager.ssh.HostSessionStore
 import net.raphaelgf11.ilo3manager.ssh.SshKeyGenerator
 import net.raphaelgf11.ilo3manager.ui.common.RadioRow
+import net.raphaelgf11.ilo3manager.ui.common.detailResource
+import net.raphaelgf11.ilo3manager.ui.common.labelResource
+import net.raphaelgf11.ilo3manager.ui.common.titleResource
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
@@ -86,6 +92,13 @@ private const val TAB_NOTIF = "Notifications"
 private fun tabsFor(webGatewayOnly: Boolean): List<String> =
     if (webGatewayOnly) listOf(TAB_GENERAL)
     else listOf(TAB_GENERAL, TAB_AUTH, TAB_IPMI, TAB_NOTIF)
+
+private fun tabTitleResource(tab: String): Int = when (tab) {
+    TAB_GENERAL -> R.string.host_tab_general
+    TAB_AUTH -> R.string.host_tab_auth
+    TAB_IPMI -> R.string.host_tab_ipmi
+    else -> R.string.host_tab_notifications
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -160,10 +173,12 @@ fun AddEditHostScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (existingHost == null) "Nouvel hôte" else "Modifier l'hôte") },
+                title = {
+                    Text(stringResource(if (existingHost == null) R.string.host_editor_new else R.string.host_editor_edit))
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Retour")
+                        Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
             )
@@ -227,7 +242,7 @@ fun AddEditHostScreen(
                         .imePadding()
                         .padding(16.dp),
                 ) {
-                    Text("Enregistrer")
+                    Text(stringResource(R.string.common_save))
                 }
             }
         },
@@ -240,7 +255,7 @@ fun AddEditHostScreen(
                     Tab(
                         selected = selectedTab == index,
                         onClick = { selectedTab = index },
-                        text = { Text(title) },
+                        text = { Text(stringResource(tabTitleResource(title))) },
                     )
                 }
             }
@@ -360,14 +375,14 @@ private fun GeneralTab(
     OutlinedTextField(
         value = name,
         onValueChange = onNameChange,
-        label = { Text("Nom") },
+        label = { Text(stringResource(R.string.host_name_label)) },
         modifier = Modifier.fillMaxWidth(),
     )
     Spacer()
     OutlinedTextField(
         value = hostname,
         onValueChange = onHostnameChange,
-        label = { Text("Adresse (IP ou nom d'hôte)") },
+        label = { Text(stringResource(R.string.host_address_label)) },
         modifier = Modifier.fillMaxWidth(),
     )
     Spacer()
@@ -380,7 +395,7 @@ private fun GeneralTab(
     OutlinedTextField(
         value = port,
         onValueChange = { onPortChange(it.filter { c -> c.isDigit() }) },
-        label = { Text("Port SSH") },
+        label = { Text(stringResource(R.string.host_ssh_port_label)) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         modifier = Modifier.fillMaxWidth(),
     )
@@ -388,7 +403,7 @@ private fun GeneralTab(
     OutlinedTextField(
         value = httpsPort,
         onValueChange = { onHttpsPortChange(it.filter { c -> c.isDigit() }) },
-        label = { Text("Port HTTPS (interface web iLO)") },
+        label = { Text(stringResource(R.string.host_https_port_label)) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         modifier = Modifier.fillMaxWidth(),
     )
@@ -399,11 +414,9 @@ private fun GeneralTab(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-            Text("Ouvrir le port série (VSP) à l'ouverture")
+            Text(stringResource(R.string.host_vsp_auto_open))
             Text(
-                "La console série utilise sa propre session SSH, distincte de celle des autres " +
-                    "onglets : l'ouvrir d'avance rend l'onglet VSP immédiatement utilisable. " +
-                    "Elle consomme en contrepartie une des rares sessions simultanées de l'iLO.",
+                stringResource(R.string.host_vsp_auto_open_help),
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -411,19 +424,16 @@ private fun GeneralTab(
     }
 
     Spacer()
-    Text("Adresses des cartes réseau", style = MaterialTheme.typography.titleSmall)
+    Text(stringResource(R.string.host_nic_addresses), style = MaterialTheme.typography.titleSmall)
     Text(
-        "Une adresse par port, dans l'ordre du panneau avant. Les voyants réseau s'allument quand " +
-            "l'adresse répond à un ping. C'est une approximation : ils indiquent en réalité l'état " +
-            "du lien, que ni l'IPMI ni l'API de l'iLO ne rapportent — un port câblé mais sans " +
-            "adresse restera donc éteint ici. Laissez vide les ports que vous ne suivez pas.",
+        stringResource(R.string.host_nic_addresses_help),
         style = MaterialTheme.typography.bodySmall,
     )
     nicAddresses.forEachIndexed { index, address ->
         OutlinedTextField(
             value = address,
             onValueChange = { nicAddresses[index] = it.trim() },
-            label = { Text("Port ${index + 1}") },
+            label = { Text(stringResource(R.string.host_port_number, index + 1)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -436,12 +446,9 @@ private fun GeneralTab(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-            Text("Passerelle web uniquement")
+            Text(stringResource(R.string.host_web_gateway_only))
             Text(
-                "Le serveur n'expose que l'interface web de l'iLO et ne demande aucun identifiant : " +
-                    "l'authentification a lieu dans le navigateur, sur la page de connexion de " +
-                    "l'iLO. Utile pour atteindre un iLO dont aucun navigateur moderne ne veut, " +
-                    "justement pour y créer le compte dédié ou y déposer une clé.",
+                stringResource(R.string.host_web_gateway_only_help),
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -450,11 +457,11 @@ private fun GeneralTab(
 
     if (!webGatewayOnly) {
         Spacer()
-        Text("Onglet affiché à l'ouverture")
+        Text(stringResource(R.string.host_default_tab))
         HostTab.entries.forEach { candidate ->
             RadioRow(
                 selected = defaultTab == candidate,
-                label = candidate.title,
+                label = stringResource(candidate.titleResource()),
                 onSelect = { onDefaultTabChange(candidate) },
             )
         }
@@ -481,18 +488,18 @@ private fun AuthenticationTab(
     OutlinedTextField(
         value = username,
         onValueChange = onUsernameChange,
-        label = { Text("Utilisateur") },
+        label = { Text(stringResource(R.string.host_username)) },
         modifier = Modifier.fillMaxWidth(),
     )
     Spacer()
 
-    Text("Méthode d'authentification")
+    Text(stringResource(R.string.host_auth_method))
     AuthMethod.entries.forEach { method ->
         RadioRow(
             selected = authMethod == method,
             label = when (method) {
-                AuthMethod.PASSWORD -> "Mot de passe"
-                AuthMethod.PRIVATE_KEY -> "Clé privée"
+                AuthMethod.PASSWORD -> stringResource(R.string.host_password)
+                AuthMethod.PRIVATE_KEY -> stringResource(R.string.host_private_key)
             },
             onSelect = { onAuthMethodChange(method) },
         )
@@ -505,7 +512,9 @@ private fun AuthenticationTab(
                 onValueChange = onPasswordChange,
                 label = {
                     Text(
-                        if (isNewHost) "Mot de passe" else "Nouveau mot de passe (laisser vide pour ne pas changer)",
+                        stringResource(
+                            if (isNewHost) R.string.host_password else R.string.host_new_password_optional,
+                        ),
                     )
                 },
                 visualTransformation = PasswordVisualTransformation(),
@@ -515,13 +524,13 @@ private fun AuthenticationTab(
         AuthMethod.PRIVATE_KEY -> {
             Row {
                 OutlinedButton(onClick = onImportKey) {
-                    Text("Importer un fichier de clé")
+                    Text(stringResource(R.string.host_import_key))
                 }
                 OutlinedButton(
                     onClick = onGenerateKey,
                     modifier = Modifier.padding(start = 8.dp),
                 ) {
-                    Text("Générer une paire de clés")
+                    Text(stringResource(R.string.host_generate_key))
                 }
             }
             Spacer()
@@ -531,9 +540,9 @@ private fun AuthenticationTab(
                 label = {
                     Text(
                         if (isNewHost) {
-                            "Clé privée (collez le contenu ou importez un fichier)"
+                            stringResource(R.string.host_private_key_paste)
                         } else {
-                            "Nouvelle clé privée (laisser vide pour ne pas changer)"
+                            stringResource(R.string.host_private_key_replace)
                         },
                     )
                 },
@@ -549,9 +558,9 @@ private fun AuthenticationTab(
                 label = {
                     Text(
                         if (isNewHost) {
-                            "Phrase secrète de la clé (optionnel)"
+                            stringResource(R.string.host_key_passphrase_optional)
                         } else {
-                            "Nouvelle phrase secrète (laisser vide pour ne pas changer)"
+                            stringResource(R.string.host_key_passphrase_replace)
                         },
                     )
                 },
@@ -560,7 +569,7 @@ private fun AuthenticationTab(
             )
             if (publicKey.isNotBlank()) {
                 Spacer()
-                Text("Clé publique à ajouter dans l'iLO (Administration > Sécurité > SSH) :")
+                Text(stringResource(R.string.host_public_key_ilo))
                 OutlinedTextField(
                     value = publicKey,
                     onValueChange = {},
@@ -605,10 +614,9 @@ private fun IpmiTab(
                 .weight(1f)
                 .padding(end = 8.dp),
         ) {
-            Text("Utiliser IPMI pour l'alimentation")
+            Text(stringResource(R.string.host_use_ipmi_power))
             Text(
-                "L'onglet Alim passe alors entièrement par IPMI : l'état et les actions " +
-                    "d'alimentation répondent en une fraction de seconde, sans ouvrir de session SSH.",
+                stringResource(R.string.host_use_ipmi_power_help),
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -617,18 +625,15 @@ private fun IpmiTab(
 
     if (enabled) {
         Spacer()
-        Text("Niveau de privilège demandé")
+        Text(stringResource(R.string.host_ipmi_privilege))
         Text(
-            "Opérateur suffit pour l'alimentation et la LED UID ; Lecture seule permet de " +
-                "consulter l'état sans rien modifier. Attention : l'iLO plafonne le niveau " +
-                "accordé selon les privilèges du compte — un compte incomplet est ramené en " +
-                "lecture seule, quel que soit le niveau demandé ici.",
+            stringResource(R.string.host_ipmi_privilege_help),
             style = MaterialTheme.typography.bodySmall,
         )
         IpmiPrivilege.entries.forEach { candidate ->
             RadioRow(
                 selected = privilege == candidate,
-                label = candidate.label,
+                label = stringResource(candidate.labelResource()),
                 onSelect = { onPrivilegeChange(candidate) },
             )
         }
@@ -640,11 +645,9 @@ private fun IpmiTab(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                Text("Afficher l'état dans la liste")
+                Text(stringResource(R.string.host_show_state_list))
                 Text(
-                    "La liste des serveurs interroge alors cet hôte périodiquement pour y afficher " +
-                        "son alimentation et ses défauts. Réservé à IPMI : une connexion SSH par " +
-                        "hôte serait bien trop lente et saturerait les sessions de l'iLO.",
+                    stringResource(R.string.host_show_state_list_help),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -657,13 +660,9 @@ private fun IpmiTab(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                Text("Onglet HW via IPMI")
+                Text(stringResource(R.string.host_hardware_ipmi))
                 Text(
-                    "L'onglet Matériel lit alors les capteurs IPMI au lieu de parcourir l'arborescence " +
-                        "CLI : quelques secondes au lieu d'une quinzaine, et aucune session SSH. " +
-                        "En contrepartie il affiche des capteurs (températures, ventilateurs, " +
-                        "alimentations) et non l'inventaire : ni détail par barrette mémoire ou par " +
-                        "processeur, ni numéros de série.",
+                    stringResource(R.string.host_hardware_ipmi_help),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -676,13 +675,9 @@ private fun IpmiTab(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                Text("Toujours ouvrir la session SSH")
+                Text(stringResource(R.string.host_always_open_ssh))
                 Text(
-                    "Une fois l'onglet Alim affiché par IPMI, la session SSH s'ouvre en arrière-plan " +
-                        "au lieu d'attendre qu'un onglet en ait besoin : les onglets VSP, SSH et " +
-                        "Matériel sont alors immédiatement utilisables. Utile si IPMI est limité à " +
-                        "la lecture, ou si vous vous servez souvent de ces onglets. " +
-                        "Uniquement à l'ouverture d'un serveur — jamais depuis la liste.",
+                    stringResource(R.string.host_always_open_ssh_help),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -696,12 +691,9 @@ private fun IpmiTab(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                Text("Surveillance par IPMI")
+                Text(stringResource(R.string.host_monitor_ipmi))
                 Text(
-                    "La vérification périodique ouvre une connexion neuve à chaque tour, pour " +
-                        "chaque serveur surveillé : en SSH cela coûte plusieurs secondes et l'une " +
-                        "des rares sessions simultanées de l'iLO, en IPMI quelques échanges UDP. " +
-                        "En contrepartie l'alerte nomme des capteurs plutôt que des composants.",
+                    stringResource(R.string.host_monitor_ipmi_help),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -711,23 +703,20 @@ private fun IpmiTab(
         OutlinedTextField(
             value = port,
             onValueChange = { onPortChange(it.filter { c -> c.isDigit() }) },
-            label = { Text("Port IPMI (UDP)") },
+            label = { Text(stringResource(R.string.host_ipmi_port)) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer()
         Text(
-            "IPMI/DCMI par LAN n'est pas actif par défaut sur un iLO3 : activez-le d'abord côté " +
-                "iLO (Administration > Access Settings), sinon rien ne répondra sur ce port.",
+            stringResource(R.string.host_ipmi_lan_help),
             style = MaterialTheme.typography.bodySmall,
         )
         // IPMI authenticates with the account password (RAKP), so a key-only host cannot use it.
         if (authMethod == AuthMethod.PRIVATE_KEY && !hasStoredPassword && typedPassword.isBlank()) {
             Spacer()
             Text(
-                "Cet hôte est configuré en clé privée sans mot de passe enregistré. IPMI " +
-                    "s'authentifie par mot de passe : renseignez-en un dans l'onglet " +
-                    "Authentification, sinon IPMI restera inutilisé.",
+                stringResource(R.string.host_ipmi_password_required),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
@@ -749,10 +738,9 @@ private fun NetworkPicker(
     onNetworkIdChange: (String) -> Unit,
 ) {
     if (networks.isEmpty()) {
-        Text("Réseau", style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(R.string.host_no_network_title), style = MaterialTheme.typography.titleSmall)
         Text(
-            "Aucun réseau défini. Ce serveur est joint directement. Pour passer par un tunnel, " +
-                "créez un réseau avec le bouton Réseaux de l'écran d'accueil.",
+            stringResource(R.string.host_no_network_help),
             style = MaterialTheme.typography.bodySmall,
         )
         return
@@ -770,22 +758,21 @@ private fun NetworkPicker(
     ) {
         OutlinedTextField(
             value = when {
-                dangling -> "Réseau introuvable"
+                dangling -> stringResource(R.string.host_network_not_found)
                 selected != null -> selected.name
-                else -> DIRECT_ACCESS
+                else -> stringResource(R.string.wizard_direct_access)
             },
             onValueChange = {},
             readOnly = true,
             isError = dangling,
-            label = { Text("Réseau") },
+            label = { Text(stringResource(R.string.wizard_network)) },
             supportingText = {
                 Text(
                     when {
-                        dangling -> "Le réseau enregistré pour ce serveur n'existe plus. " +
-                            "Choisissez-en un autre, ou l'accès direct."
-                        selected == null -> "Le serveur est joint sans tunnel."
-                        !selected.isUsable -> "${selected.type.label} — configuration incomplète"
-                        else -> selected.type.label
+                        dangling -> stringResource(R.string.host_network_missing_help)
+                        selected == null -> stringResource(R.string.host_network_direct_help)
+                        !selected.isUsable -> "${stringResource(selected.type.labelResource())} — ${stringResource(R.string.host_network_incomplete)}"
+                        else -> stringResource(selected.type.labelResource())
                     },
                 )
             },
@@ -798,7 +785,7 @@ private fun NetworkPicker(
         )
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             DropdownMenuItem(
-                text = { Text(DIRECT_ACCESS) },
+                text = { Text(stringResource(R.string.wizard_direct_access)) },
                 onClick = {
                     onNetworkIdChange("")
                     expanded = false
@@ -810,8 +797,8 @@ private fun NetworkPicker(
                         Column {
                             Text(network.name)
                             Text(
-                                network.type.label +
-                                    if (network.isUsable) "" else " — configuration incomplète",
+                                stringResource(network.type.labelResource()) +
+                                    if (network.isUsable) "" else " — ${stringResource(R.string.host_network_incomplete)}",
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
@@ -825,8 +812,6 @@ private fun NetworkPicker(
         }
     }
 }
-
-private const val DIRECT_ACCESS = "Accès direct"
 
 @Composable
 private fun Spacer() {
@@ -864,10 +849,9 @@ private fun NotificationsTab(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-            Text("Surveiller ce serveur")
+            Text(stringResource(R.string.notifications_monitor_host))
             Text(
-                "Une vérification périodique en arrière-plan, qui n'alerte que lorsque l'état " +
-                    "change : un serveur sain qui le reste ne produit aucune notification.",
+                stringResource(R.string.notifications_monitor_help),
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -878,10 +862,9 @@ private fun NotificationsTab(
     }
 
     Spacer()
-    Text("Intervalle", style = MaterialTheme.typography.titleSmall)
+    Text(stringResource(R.string.notifications_interval_title), style = MaterialTheme.typography.titleSmall)
     Text(
-        "Le système impose un plancher de 15 minutes aux tâches périodiques ; une valeur plus " +
-            "courte ne sera pas respectée.",
+        stringResource(R.string.notifications_min_interval_help),
         style = MaterialTheme.typography.bodySmall,
     )
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -895,39 +878,38 @@ private fun NotificationsTab(
     }
 
     Spacer()
-    Text("M'alerter en cas de", style = MaterialTheme.typography.titleSmall)
-    NotifToggle("Échec de connexion", settings.notifyOnConnectionFailure) {
+    Text(stringResource(R.string.notifications_alert_when), style = MaterialTheme.typography.titleSmall)
+    NotifToggle(R.string.notifications_connection_failure, settings.notifyOnConnectionFailure) {
         onSettingsChange(settings.copy(notifyOnConnectionFailure = it))
     }
-    NotifToggle("État critique", settings.notifyOnCritical) {
+    NotifToggle(R.string.notifications_critical_state, settings.notifyOnCritical) {
         onSettingsChange(settings.copy(notifyOnCritical = it))
     }
-    NotifToggle("État dégradé", settings.notifyOnDegraded) {
+    NotifToggle(R.string.notifications_degraded_state, settings.notifyOnDegraded) {
         onSettingsChange(settings.copy(notifyOnDegraded = it))
     }
-    NotifToggle("Serveur éteint", settings.notifyOnPoweredOff) {
+    NotifToggle(R.string.notifications_server_powered_off, settings.notifyOnPoweredOff) {
         onSettingsChange(settings.copy(notifyOnPoweredOff = it))
     }
-    NotifToggle("Serveur allumé", settings.notifyOnPoweredOn) {
+    NotifToggle(R.string.notifications_server_powered_on, settings.notifyOnPoweredOn) {
         onSettingsChange(settings.copy(notifyOnPoweredOn = it))
     }
 
     Spacer()
     Text(
-        "Dernière vérification : " + if (lastChecked > 0) {
-            java.text.DateFormat.getDateTimeInstance(
+        stringResource(
+            R.string.notifications_last_check,
+            if (lastChecked > 0) java.text.DateFormat.getDateTimeInstance(
                 java.text.DateFormat.SHORT,
                 java.text.DateFormat.SHORT,
-            ).format(java.util.Date(lastChecked))
-        } else {
-            "jamais"
-        },
+            ).format(java.util.Date(lastChecked)) else stringResource(R.string.notifications_never),
+        ),
         style = MaterialTheme.typography.bodySmall,
     )
 
     if (hostId == null) {
         Text(
-            "Enregistrez le serveur avant de pouvoir tester.",
+            stringResource(R.string.notifications_save_before_test),
             style = MaterialTheme.typography.bodySmall,
         )
     } else {
@@ -939,7 +921,7 @@ private fun NotificationsTab(
             enabled = !testing,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(if (testing) "Vérification en cours…" else "Tester maintenant")
+            Text(stringResource(if (testing) R.string.notifications_checking else R.string.notifications_test_now))
         }
     }
 
@@ -985,12 +967,12 @@ private fun InstantAlertSection(
     network: NetworkConfig?,
     savedHost: SshHost?,
 ) {
-    Text("Alerte instantanée", style = MaterialTheme.typography.titleSmall)
+    Text(stringResource(R.string.instant_alert_title), style = MaterialTheme.typography.titleSmall)
     InstantAlertMode.entries.forEach { candidate ->
         RadioRow(
             selected = mode == candidate,
-            label = candidate.label,
-            detail = candidate.detail,
+            label = stringResource(candidate.labelResource()),
+            detail = stringResource(candidate.detailResource()),
             onSelect = { onModeChange(candidate) },
         )
     }
@@ -1002,13 +984,12 @@ private fun InstantAlertSection(
             OutlinedTextField(
                 value = alertGatewayUrl,
                 onValueChange = onAlertGatewayUrlChange,
-                label = { Text("Adresse de la passerelle (hôte:port)") },
+                label = { Text(stringResource(R.string.instant_alert_gateway_address)) },
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer()
             Text(
-                "Le transport n'est pas encore implémenté : ce réglage est enregistré mais " +
-                    "aucune alerte ne transitera par cette passerelle pour l'instant.",
+                stringResource(R.string.instant_alert_not_implemented),
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -1026,6 +1007,7 @@ private fun InstantAlertSection(
  */
 @Composable
 private fun SnmpDirectPanel(network: NetworkConfig?, savedHost: SshHost?) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
     var outcome by remember { mutableStateOf<Result<String>?>(null) }
@@ -1045,8 +1027,8 @@ private fun SnmpDirectPanel(network: NetworkConfig?, savedHost: SshHost?) {
 
     Text(
         destination.fold(
-            onSuccess = { "L'iLO enverra ses traps à $it." },
-            onFailure = { "Destination indéterminable : ${it.message}" },
+            onSuccess = { context.getString(R.string.instant_alert_destination, it) },
+            onFailure = { context.getString(R.string.instant_alert_unknown_destination, it.message.orEmpty()) },
         ),
         style = MaterialTheme.typography.bodySmall,
         color = if (destination.isFailure) MaterialTheme.colorScheme.error else Color.Unspecified,
@@ -1055,8 +1037,7 @@ private fun SnmpDirectPanel(network: NetworkConfig?, savedHost: SshHost?) {
     if (savedHost == null) {
         Spacer()
         Text(
-            "Enregistrez le serveur avant de configurer l'iLO : les deux boutons ouvrent une " +
-                "session SSH avec ses identifiants.",
+            stringResource(R.string.instant_alert_save_first),
             style = MaterialTheme.typography.bodySmall,
         )
         return
@@ -1089,26 +1070,26 @@ private fun SnmpDirectPanel(network: NetworkConfig?, savedHost: SshHost?) {
             enabled = !busy && destination.isSuccess,
             modifier = Modifier.weight(1f),
         ) {
-            Text("Configurer")
+            Text(stringResource(R.string.instant_alert_configure))
         }
         OutlinedButton(
             onClick = { run { SnmpDirectActions.testReachability(savedHost, network) } },
             enabled = !busy && destination.isSuccess,
             modifier = Modifier.weight(1f),
         ) {
-            Text("Tester")
+            Text(stringResource(R.string.instant_alert_test))
         }
     }
 
     Spacer()
     if (busy) {
-        Text("Session SSH en cours…", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.instant_alert_ssh_session), style = MaterialTheme.typography.bodySmall)
     }
     outcome?.let { result ->
         Text(
             result.fold(
                 onSuccess = { it },
-                onFailure = { it.message ?: "Échec sans message." },
+                onFailure = { it.message ?: context.getString(R.string.instant_alert_failed_no_message) },
             ),
             color = if (result.isFailure) MaterialTheme.colorScheme.error else Color.Unspecified,
             style = MaterialTheme.typography.bodySmall,
@@ -1117,19 +1098,13 @@ private fun SnmpDirectPanel(network: NetworkConfig?, savedHost: SshHost?) {
 
     Spacer()
     Text(
-        "« Tester » demande à l'iLO de pinguer le téléphone : c'est le sens qui casse, et le seul " +
-            "que ce micrologiciel permette de vérifier — sa CLI n'expose pas le « Send test " +
-            "alert » de l'interface web. Un ping qui passe ne garantit pas que le port UDP 162 " +
-            "soit ouvert tout du long.",
+        stringResource(R.string.instant_alert_test_explanation),
         style = MaterialTheme.typography.bodySmall,
     )
 
     Spacer()
     Text(
-        "Le téléphone écoute les traps dès que ce mode est enregistré, par un service en " +
-            "arrière-plan permanent. L'écoute passe obligatoirement par un réseau WireGuard : " +
-            "le port 162 est réservé par Android, et seul le tunnel peut l'ouvrir — sa pile " +
-            "réseau étant en espace utilisateur, la notion de port privilégié n'y existe pas.",
+        stringResource(R.string.instant_alert_listener_explanation),
         style = MaterialTheme.typography.bodySmall,
     )
 
@@ -1162,12 +1137,11 @@ private fun SnmpSlotDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Quelle destination écrire ?") },
+        title = { Text(stringResource(R.string.instant_alert_choose_destination)) },
         text = {
             Column {
                 Text(
-                    "L'iLO en garde trois. ${state.destination} sera écrite dans celle que vous " +
-                        "choisissez.",
+                    stringResource(R.string.instant_alert_slot_explanation, state.destination),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Spacer()
@@ -1176,11 +1150,11 @@ private fun SnmpSlotDialog(
                     val free = value.isBlank() || value == "0" || value == "0.0.0.0"
                     RadioRow(
                         selected = selected == slot,
-                        label = "Destination $slot",
+                        label = stringResource(R.string.instant_alert_destination_slot, slot),
                         detail = when {
-                            value.trim() == state.destination -> "déjà ce téléphone"
-                            free -> "libre"
-                            else -> "occupée par $value — sera remplacée"
+                            value.trim() == state.destination -> stringResource(R.string.instant_alert_already_this_phone)
+                            free -> stringResource(R.string.instant_alert_slot_free)
+                            else -> stringResource(R.string.instant_alert_slot_replace, value)
                         },
                         onSelect = { selected = slot },
                     )
@@ -1188,26 +1162,25 @@ private fun SnmpSlotDialog(
                 if (!state.alertsEnabled) {
                     Spacer()
                     Text(
-                        "Les alertes iLO sont désactivées ; elles seront activées, sans quoi " +
-                            "aucune trap ne partirait.",
+                        stringResource(R.string.instant_alert_enable_ilo_alerts),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { onConfirm(selected) }) { Text("Écrire") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } },
+        confirmButton = { TextButton(onClick = { onConfirm(selected) }) { Text(stringResource(R.string.instant_alert_write)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
 @Composable
-private fun NotifToggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+private fun NotifToggle(@StringRes label: Int, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().selectable(selected = checked, onClick = { onChange(!checked) }),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(label, modifier = Modifier.weight(1f))
+        Text(stringResource(label), modifier = Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = onChange)
     }
 }

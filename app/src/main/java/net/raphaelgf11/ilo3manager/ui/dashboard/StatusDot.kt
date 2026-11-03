@@ -13,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import net.raphaelgf11.ilo3manager.ui.common.labelResource
 import net.raphaelgf11.ilo3manager.ilo.HostIndicator
 
 private val COLOURS = mapOf(
@@ -49,12 +51,5 @@ fun StatusDot(indicator: HostIndicator, size: Dp = 12.dp) {
     }
 }
 
-fun labelFor(indicator: HostIndicator): String = when (indicator) {
-    HostIndicator.UNKNOWN -> "État inconnu"
-    HostIndicator.CONNECTING -> "Connexion en cours"
-    HostIndicator.POWERED_OFF -> "Éteint"
-    HostIndicator.FAULT -> "Défaut non critique"
-    HostIndicator.CRITICAL -> "Défaut critique"
-    HostIndicator.POWERED_ON -> "Allumé"
-    HostIndicator.UID -> "LED UID allumée"
-}
+@Composable
+fun labelFor(indicator: HostIndicator): String = stringResource(indicator.labelResource())

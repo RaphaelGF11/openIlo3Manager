@@ -30,6 +30,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.res.stringResource
+import net.raphaelgf11.ilo3manager.R
 import net.raphaelgf11.ilo3manager.ilo.ControlSessionController
 import net.raphaelgf11.ilo3manager.ssh.ConnectionState
 
@@ -58,7 +60,7 @@ fun ConsoleTab(controller: ControlSessionController) {
             when (connectionState) {
                 ConnectionState.CONNECTING -> Text(progress ?: "Connexion SSH en cours…")
                 else -> Button(onClick = { controller.ensureSshConnected() }) {
-                    Text("Se connecter en SSH")
+                    Text(stringResource(R.string.console_connect_ssh))
                 }
             }
         }
@@ -88,7 +90,7 @@ fun ConsoleTab(controller: ControlSessionController) {
                     value = command,
                     onValueChange = { command = it },
                     modifier = Modifier.weight(1f),
-                    label = { Text("Commande iLO CLI") },
+                    label = { Text(stringResource(R.string.console_command_label)) },
                     singleLine = true,
                     enabled = !busy,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -106,7 +108,7 @@ fun ConsoleTab(controller: ControlSessionController) {
                     },
                     enabled = !busy,
                 ) {
-                    Icon(Icons.Filled.Send, contentDescription = "Envoyer")
+                    Icon(Icons.Filled.Send, contentDescription = stringResource(R.string.common_send))
                 }
             }
         }

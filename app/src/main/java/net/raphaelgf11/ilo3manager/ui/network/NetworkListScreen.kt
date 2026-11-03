@@ -31,13 +31,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import net.raphaelgf11.ilo3manager.data.HostRepository
 import net.raphaelgf11.ilo3manager.data.NetworkConfig
 import net.raphaelgf11.ilo3manager.data.NetworkRepository
 import net.raphaelgf11.ilo3manager.data.SshHost
+import net.raphaelgf11.ilo3manager.R
 import net.raphaelgf11.ilo3manager.ui.common.ConfirmDeleteDialog
+import net.raphaelgf11.ilo3manager.ui.common.labelResource
 
 /**
  * The named networks hosts can be reached through.
@@ -55,6 +59,7 @@ fun NetworkListScreen(
     onAddNetwork: () -> Unit,
     onEditNetwork: (NetworkConfig) -> Unit,
 ) {
+    val context = LocalContext.current
     // Re-read after every change rather than held in a view model: this list is short, edited
     // rarely, and returning to it from the edit screen has to show the edit.
     var revision by remember { mutableStateOf(0) }
@@ -65,17 +70,17 @@ fun NetworkListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Réseaux") },
+                title = { Text(stringResource(R.string.network_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Retour")
+                        Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
             )
         },
         floatingActionButton = {
             FloatingActionButton(onClick = onAddNetwork) {
-                Icon(Icons.Filled.Add, contentDescription = "Ajouter un réseau")
+                Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.network_add))
             }
         },
     ) { padding ->
@@ -87,8 +92,7 @@ fun NetworkListScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    "Aucun réseau. Appuyez sur + pour en ajouter un, puis choisissez-le dans " +
-                        "l'onglet Général d'un serveur.",
+                    stringResource(R.string.network_empty),
                     modifier = Modifier.padding(horizontal = 32.dp),
                     textAlign = TextAlign.Center,
                 )
@@ -116,15 +120,15 @@ fun NetworkListScreen(
     pendingDeletion?.let { network ->
         val users = hosts.filter { it.networkId == network.id }
         ConfirmDeleteDialog(
-            title = "Supprimer « ${network.name} » ?",
+            title = stringResource(R.string.network_delete_title, network.name),
             message = buildString {
-                append("La configuration et ses clés seront effacées définitivement.")
+                append(context.getString(R.string.network_delete_message))
                 if (users.isNotEmpty()) {
                     // Naming them: the consequence lands on servers the user is not looking at.
                     append("\n\n")
                     append(
-                        if (users.size == 1) "Ce serveur repassera en accès direct : "
-                        else "Ces ${users.size} serveurs repasseront en accès direct : ",
+                        if (users.size == 1) context.getString(R.string.network_delete_one_host)
+                        else context.getString(R.string.network_delete_many_hosts, users.size),
                     )
                     append(users.joinToString(", ") { it.name })
                     append(".")
@@ -161,12 +165,16 @@ private fun NetworkRow(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(network.name, style = MaterialTheme.typography.titleMedium)
-                Text(network.type.label, style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(network.type.labelResource()), style = MaterialTheme.typography.bodySmall)
                 Text(
                     when {
-                        users.isEmpty() -> "Aucun serveur"
+                        users.isEmpty() -> stringResource(R.string.network_no_servers)
                         users.size == 1 -> users.first().name
-                        else -> "${users.size} serveurs : ${users.joinToString(", ") { it.name }}"
+                        else -> stringResource(
+                            R.string.network_server_count,
+                            users.size,
+                            users.joinToString(", ") { it.name },
+                        )
                     },
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -174,14 +182,14 @@ private fun NetworkRow(
                 // otherwise the only symptom is a connection failing much later.
                 if (!network.isUsable) {
                     Text(
-                        "Configuration incomplète",
+                        stringResource(R.string.network_incomplete),
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
             }
             IconButton(onClick = onDelete) {
-                Icon(Icons.Filled.Delete, contentDescription = "Supprimer")
+                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.common_delete))
             }
         }
     }

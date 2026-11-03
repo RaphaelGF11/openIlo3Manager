@@ -3,6 +3,7 @@ package net.raphaelgf11.ilo3manager.notify
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import net.raphaelgf11.ilo3manager.R
 import net.raphaelgf11.ilo3manager.data.HostRepository
 import net.raphaelgf11.ilo3manager.data.NotificationSettingsRepository
 import net.raphaelgf11.ilo3manager.ilo.HealthLevel
@@ -58,7 +59,7 @@ class HardwareMonitorWorker(
                             applicationContext,
                             notificationId(hostId, 0),
                             host.name,
-                            "Échec de connexion SSH : ${result.message}",
+                            applicationContext.getString(R.string.monitor_ssh_failure, result.message),
                         )
                     }
                     stateStore.set(hostId, previous.copy(lastCheckedAtMillis = now, connectionOk = false))
@@ -72,7 +73,8 @@ class HardwareMonitorWorker(
                             applicationContext,
                             notificationId(hostId, 1),
                             host.name,
-                            "État critique" + describeDegraded(result.degradedComponentLabels),
+                            applicationContext.getString(R.string.monitor_critical) +
+                                describeDegraded(result.degradedComponentLabels),
                         )
                     } else if (
                         settings.notifyOnDegraded &&
@@ -84,14 +86,25 @@ class HardwareMonitorWorker(
                             applicationContext,
                             notificationId(hostId, 2),
                             host.name,
-                            "Dégradation matérielle" + describeDegraded(result.degradedComponentLabels),
+                            applicationContext.getString(R.string.monitor_degraded) +
+                                describeDegraded(result.degradedComponentLabels),
                         )
                     }
 
                     if (settings.notifyOnPoweredOff && result.power == PowerState.OFF && previousPower == PowerState.ON) {
-                        NotificationHelper.notify(applicationContext, notificationId(hostId, 3), host.name, "Le serveur s'est éteint")
+                        NotificationHelper.notify(
+                            applicationContext,
+                            notificationId(hostId, 3),
+                            host.name,
+                            applicationContext.getString(R.string.monitor_powered_off),
+                        )
                     } else if (settings.notifyOnPoweredOn && result.power == PowerState.ON && previousPower == PowerState.OFF) {
-                        NotificationHelper.notify(applicationContext, notificationId(hostId, 4), host.name, "Le serveur s'est allumé")
+                        NotificationHelper.notify(
+                            applicationContext,
+                            notificationId(hostId, 4),
+                            host.name,
+                            applicationContext.getString(R.string.monitor_powered_on),
+                        )
                     }
 
                     stateStore.set(
@@ -110,7 +123,10 @@ class HardwareMonitorWorker(
     }
 
     private fun describeDegraded(labels: List<String>): String =
-        if (labels.isEmpty()) "" else " : ${labels.joinToString(", ")}"
+        if (labels.isEmpty()) "" else applicationContext.getString(
+            R.string.monitor_component_details,
+            labels.joinToString(", "),
+        )
 
     private fun notificationId(hostId: String, eventType: Int): Int = hostId.hashCode() * 10 + eventType
 }

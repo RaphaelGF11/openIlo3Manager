@@ -45,11 +45,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import net.raphaelgf11.ilo3manager.data.AuthMethod
+import net.raphaelgf11.ilo3manager.R
 import net.raphaelgf11.ilo3manager.data.HostRepository
 import net.raphaelgf11.ilo3manager.data.NetworkConfig
 import net.raphaelgf11.ilo3manager.data.NetworkRepository
@@ -65,6 +67,8 @@ import net.raphaelgf11.ilo3manager.setup.dedicatedAccountDisplayName
 import net.raphaelgf11.ilo3manager.setup.dedicatedAccountLosesIpmi
 import net.raphaelgf11.ilo3manager.setup.defaultDedicatedUsername
 import net.raphaelgf11.ilo3manager.setup.nextFreeDedicatedUsername
+import net.raphaelgf11.ilo3manager.ui.common.detailResource
+import net.raphaelgf11.ilo3manager.ui.common.labelResource
 
 private const val STEP_IDENTITY = 0
 private const val STEP_SSH_PORT = 1
@@ -74,12 +78,12 @@ private const val STEP_IPMI = 4
 private const val STEP_DONE = 5
 
 private val STEP_TITLES = listOf(
-    "Réseau et adresse",
-    "Port SSH",
-    "Identifiants",
-    "Compte dédié",
-    "IPMI",
-    "Nom et enregistrement",
+    R.string.wizard_step_network,
+    R.string.wizard_step_ssh_port,
+    R.string.wizard_step_credentials,
+    R.string.wizard_step_account,
+    R.string.wizard_step_ipmi,
+    R.string.wizard_step_summary,
 )
 
 /**
@@ -178,7 +182,7 @@ fun HostSetupWizardScreen(
                 }
                 .onFailure {
                     cancelling = false
-                    cancelError = it.message ?: "Suppression impossible."
+                    cancelError = it.message ?: context.getString(R.string.wizard_account_remove_failed)
                 }
         }
     }
@@ -243,10 +247,10 @@ fun HostSetupWizardScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Ajout assisté") },
+                title = { Text(stringResource(R.string.wizard_title)) },
                 navigationIcon = {
                     IconButton(onClick = { leave() }, enabled = !cancelling) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Retour")
+                        Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
@@ -254,7 +258,7 @@ fun HostSetupWizardScreen(
                     // right by asking the server; the manual form stays one tap away for a server
                     // the assistant cannot reach.
                     if (step == STEP_IDENTITY) {
-                        TextButton(onClick = onManualSetup) { Text("Manuelle") }
+                        TextButton(onClick = onManualSetup) { Text(stringResource(R.string.wizard_manual)) }
                     }
                 },
             )
@@ -286,7 +290,7 @@ fun HostSetupWizardScreen(
                             enabled = !busy && !cancelling,
                             modifier = Modifier.weight(1f),
                         ) {
-                            Text("Précédent")
+                            Text(stringResource(R.string.wizard_previous))
                         }
                     }
                     Button(
@@ -303,7 +307,7 @@ fun HostSetupWizardScreen(
                         },
                         modifier = Modifier.weight(1f),
                     ) {
-                        Text(if (step == STEP_DONE) "Enregistrer" else "Suivant")
+                        Text(stringResource(if (step == STEP_DONE) R.string.common_save else R.string.wizard_next))
                     }
                 }
             }
@@ -317,7 +321,12 @@ fun HostSetupWizardScreen(
                 .verticalScroll(rememberScrollState()),
         ) {
             Text(
-                "Étape ${step + 1} sur ${STEP_TITLES.size} — ${STEP_TITLES[step]}",
+                stringResource(
+                    R.string.wizard_step_progress,
+                    step + 1,
+                    STEP_TITLES.size,
+                    stringResource(STEP_TITLES[step]),
+                ),
                 style = MaterialTheme.typography.titleMedium,
             )
             Spacer()
@@ -326,7 +335,7 @@ fun HostSetupWizardScreen(
                 Spacer()
             }
             if (cancelling) {
-                Text("Retrait du compte créé sur l'iLO…", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.wizard_removing_account), style = MaterialTheme.typography.bodySmall)
                 Spacer()
             }
 
@@ -403,25 +412,27 @@ fun HostSetupWizardScreen(
     cancelError?.let { message ->
         AlertDialog(
             onDismissRequest = { cancelError = null },
-            title = { Text("Le compte créé n'a pas pu être retiré") },
+            title = { Text(stringResource(R.string.wizard_cancel_failed_title)) },
             text = {
                 Text(
-                    "$message\n\nLe compte « ${createdAccount?.username} » est toujours sur " +
-                        "l'iLO. Vous pouvez réessayer, ou le supprimer vous-même depuis " +
-                        "Administration > Gestion des utilisateurs.",
+                    stringResource(
+                        R.string.wizard_cancel_failed_message,
+                        createdAccount?.username.orEmpty(),
+                        message,
+                    ),
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
                     cancelError = null
                     leave()
-                }) { Text("Réessayer") }
+                }) { Text(stringResource(R.string.wizard_retry)) }
             },
             dismissButton = {
                 TextButton(onClick = {
                     cancelError = null
                     onBack()
-                }) { Text("Quitter quand même") }
+                }) { Text(stringResource(R.string.wizard_exit_anyway)) }
             },
         )
     }
@@ -467,12 +478,12 @@ private fun IdentityStep(
     OutlinedTextField(
         value = hostname,
         onValueChange = onHostnameChange,
-        label = { Text("Adresse de l'iLO (IP ou nom d'hôte)") },
+        label = { Text(stringResource(R.string.wizard_ilo_address)) },
         modifier = Modifier.fillMaxWidth(),
     )
     Spacer()
     Text(
-        "Le nom du serveur est demandé à la fin, une fois que l'iLO aura pu dire le sien.",
+        stringResource(R.string.wizard_name_later),
         style = MaterialTheme.typography.bodySmall,
     )
     Spacer()
@@ -488,20 +499,23 @@ private fun WizardNetworkPicker(
 ) {
     if (networks.isEmpty()) {
         Text(
-            "Aucun réseau défini : le serveur sera joint directement.",
+            stringResource(R.string.wizard_no_network),
             style = MaterialTheme.typography.bodySmall,
         )
         return
     }
     var expanded by remember { mutableStateOf(false) }
     val selected = networks.firstOrNull { it.id == networkId }
+    val directAccess = stringResource(R.string.wizard_direct_access)
     ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
         OutlinedTextField(
-            value = selected?.name ?: "Accès direct",
+            value = selected?.name ?: directAccess,
             onValueChange = {},
             readOnly = true,
-            label = { Text("Réseau") },
-            supportingText = { Text(selected?.type?.label ?: "Le serveur est joint sans tunnel.") },
+            label = { Text(stringResource(R.string.wizard_network)) },
+            supportingText = {
+                Text(selected?.let { stringResource(it.type.detailResource()) } ?: stringResource(R.string.wizard_direct_no_tunnel))
+            },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier = Modifier
                 .menuAnchor(MenuAnchorType.PrimaryNotEditable)
@@ -509,7 +523,7 @@ private fun WizardNetworkPicker(
         )
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             DropdownMenuItem(
-                text = { Text("Accès direct") },
+                text = { Text(directAccess) },
                 onClick = {
                     onNetworkIdChange("")
                     expanded = false
@@ -537,33 +551,30 @@ private fun SshPortStep(
     onScan: () -> Unit,
 ) {
     Text(
-        "L'application vérifie que le port SSH répond avant de tenter une connexion : distinguer " +
-            "« rien n'écoute » d'« identifiants refusés » évite de chercher au mauvais endroit.",
+        stringResource(R.string.wizard_ssh_explanation),
         style = MaterialTheme.typography.bodySmall,
     )
     Spacer()
     OutlinedTextField(
         value = port,
         onValueChange = onPortChange,
-        label = { Text("Port SSH") },
+        label = { Text(stringResource(R.string.wizard_ssh_port)) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         modifier = Modifier.fillMaxWidth(),
     )
     Spacer()
     when (reachable) {
-        true -> Text("Le port $port répond.", style = MaterialTheme.typography.bodySmall)
+        true -> Text(stringResource(R.string.wizard_port_responds, port), style = MaterialTheme.typography.bodySmall)
         false -> Text(
-            "Rien ne répond sur le port $port. Si l'iLO écoute ailleurs, corrigez le port " +
-                "ci-dessus puis relancez le test. Vous pouvez aussi continuer : la connexion " +
-                "sera tentée quand même.",
+            stringResource(R.string.wizard_port_no_response, port),
             color = MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.bodySmall,
         )
-        null -> if (!busy) Text("Test en attente.", style = MaterialTheme.typography.bodySmall)
+        null -> if (!busy) Text(stringResource(R.string.wizard_test_pending), style = MaterialTheme.typography.bodySmall)
     }
     Spacer()
     OutlinedButton(onClick = onScan, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-        Text("Tester ce port")
+        Text(stringResource(R.string.wizard_test_port))
     }
 }
 
@@ -575,22 +586,21 @@ private fun CredentialsStep(
     onPasswordChange: (String) -> Unit,
 ) {
     Text(
-        "Un compte iLO existant. « Suivant » ouvre une session SSH pour le vérifier et relever ce " +
-            "que le serveur déclare.",
+        stringResource(R.string.wizard_credentials_help),
         style = MaterialTheme.typography.bodySmall,
     )
     Spacer()
     OutlinedTextField(
         value = username,
         onValueChange = onUsernameChange,
-        label = { Text("Utilisateur iLO existant") },
+        label = { Text(stringResource(R.string.wizard_existing_ilo_user)) },
         modifier = Modifier.fillMaxWidth(),
     )
     Spacer()
     OutlinedTextField(
         value = password,
         onValueChange = onPasswordChange,
-        label = { Text("Mot de passe") },
+        label = { Text(stringResource(R.string.wizard_password)) },
         visualTransformation = PasswordVisualTransformation(),
         modifier = Modifier.fillMaxWidth(),
     )
@@ -612,18 +622,17 @@ private fun AccountStep(
     onDedicatedUsernameChange: (String) -> Unit,
 ) {
     if (created != null) {
-        Text("Compte « ${created.username} » créé.")
+        Text(stringResource(R.string.wizard_account_created, created.username))
         Spacer()
         Text(
-            "Son mot de passe est enregistré chiffré sur le téléphone et n'est affiché nulle " +
-                "part : il n'a pas à être retenu, et rien d'autre n'en a besoin.",
+            stringResource(R.string.wizard_account_secret_saved),
             style = MaterialTheme.typography.bodySmall,
         )
         return
     }
 
     Text(
-        "Identifiants vérifiés. L'iLO déclare ${inspection?.accounts?.size ?: 0} comptes.",
+        stringResource(R.string.wizard_credentials_verified, inspection?.accounts?.size ?: 0),
         style = MaterialTheme.typography.bodySmall,
     )
 
@@ -634,12 +643,9 @@ private fun AccountStep(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-            Text("Créer un utilisateur dédié")
+            Text(stringResource(R.string.wizard_create_dedicated_account))
             Text(
-                "Les identifiants de l'étape précédente ne servent alors qu'à créer un compte " +
-                    "réservé à l'application, avec un mot de passe long tiré au hasard que " +
-                    "personne n'aura à retenir. Votre propre compte n'est pas enregistré sur le " +
-                    "téléphone, et révoquer l'accès de l'application revient à supprimer ce compte.",
+                stringResource(R.string.wizard_dedicated_account_help),
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -652,21 +658,18 @@ private fun AccountStep(
     OutlinedTextField(
         value = dedicatedUsername,
         onValueChange = onDedicatedUsernameChange,
-        label = { Text("Nom du compte à créer") },
+        label = { Text(stringResource(R.string.wizard_account_name)) },
         isError = dedicatedUsername.length > IPMI_MAX_USERNAME_LENGTH,
         supportingText = {
             Text(
-                "${dedicatedUsername.length} caractères sur $IPMI_MAX_USERNAME_LENGTH, la limite " +
-                    "qu'IPMI sait authentifier. Le dernier caractère est le premier libre sur cet " +
-                    "iLO.",
+                stringResource(R.string.wizard_username_length, dedicatedUsername.length, IPMI_MAX_USERNAME_LENGTH),
             )
         },
         modifier = Modifier.fillMaxWidth(),
     )
     Spacer()
     Text(
-        "Le compte recevra tous les privilèges iLO, que l'application utilise tous — un privilège " +
-            "manquant échouerait au moment de s'en servir plutôt qu'à la connexion.",
+        stringResource(R.string.wizard_privileges_help),
         style = MaterialTheme.typography.bodySmall,
     )
 
@@ -674,10 +677,11 @@ private fun AccountStep(
     if (dedicatedAccountLosesIpmi(inspection?.accessConfig?.minPasswordLength)) {
         Spacer()
         Text(
-            "Cet iLO impose des mots de passe d'au moins " +
-                "${inspection?.accessConfig?.minPasswordLength} caractères, alors qu'IPMI n'en " +
-                "authentifie que $IPMI_MAX_PASSWORD_LENGTH. Le compte créé ne pourra donc pas " +
-                "utiliser IPMI : c'est la politique de l'iLO, pas une limite de l'application.",
+                stringResource(
+                    R.string.wizard_ipmi_password_limit,
+                    inspection?.accessConfig?.minPasswordLength ?: 0,
+                    IPMI_MAX_PASSWORD_LENGTH,
+                ),
             color = MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.bodySmall,
         )
@@ -692,30 +696,27 @@ private fun IpmiStep(
 ) {
     when (outcome) {
         null -> Text(
-            if (busy) "Test d'une session IPMI…" else "Test non effectué.",
+            stringResource(if (busy) R.string.wizard_ipmi_test else R.string.wizard_ipmi_not_tested),
             style = MaterialTheme.typography.bodySmall,
         )
         is HostSetupRunner.IpmiOutcome.Available -> {
-            Text("IPMI répond.")
+            Text(stringResource(R.string.wizard_ipmi_responds))
             Spacer()
             Text(
-                "Privilège accordé : ${outcome.privilege.label}. C'est le plafond que l'iLO " +
-                    "accorde à ce compte, lu dans sa réponse plutôt que choisi : un niveau " +
-                    "demandé trop haut échouerait sur une commande, pas à la connexion.",
+                stringResource(R.string.wizard_ipmi_privilege, stringResource(outcome.privilege.labelResource())),
                 style = MaterialTheme.typography.bodySmall,
             )
         }
         is HostSetupRunner.IpmiOutcome.Unavailable -> {
-            Text("IPMI est désactivé pour ce serveur.")
+            Text(stringResource(R.string.wizard_ipmi_disabled))
             Spacer()
             Text(
-                "${outcome.reason} L'iLO 3 ne l'active pas par défaut ; tout fonctionnera par la " +
-                    "CLI SSH, simplement plus lentement.",
+                stringResource(R.string.wizard_ipmi_unavailable, outcome.reason),
                 style = MaterialTheme.typography.bodySmall,
             )
             Spacer()
             OutlinedButton(onClick = onRetry, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                Text("Retester")
+                Text(stringResource(R.string.wizard_retest))
             }
         }
     }
@@ -742,61 +743,72 @@ private fun SummaryStep(
     OutlinedTextField(
         value = serverName,
         onValueChange = onServerNameChange,
-        label = { Text("Nom du serveur") },
+        label = { Text(stringResource(R.string.wizard_server_name)) },
         supportingText = {
             Text(
-                if (readName.isNotBlank()) "Proposé par l'iLO, qui s'annonce comme « $readName »."
-                else "L'iLO ne porte aucun nom ; son adresse sera utilisée si vous laissez vide.",
+                if (readName.isNotBlank()) stringResource(R.string.wizard_name_suggested, readName)
+                else stringResource(R.string.wizard_name_fallback),
             )
         },
         modifier = Modifier.fillMaxWidth(),
     )
 
     Spacer()
-    Text("Adresse : ${host.hostname}:${host.port}")
-    Text("Port HTTPS : ${host.httpsPort}")
-    Text("Réseau : ${network?.name ?: "accès direct"}")
-    Text("Compte : ${host.username}" + if (created != null) " (créé à l'instant)" else "")
+    Text(stringResource(R.string.wizard_address_summary, host.hostname, host.port))
+    Text(stringResource(R.string.wizard_https_port_summary, host.httpsPort))
     Text(
-        "IPMI : " + when (ipmiOutcome) {
-            is HostSetupRunner.IpmiOutcome.Available -> "activé, ${ipmiOutcome.privilege.label}"
-            else -> "désactivé"
+        stringResource(
+            R.string.wizard_network_summary,
+            network?.name ?: stringResource(R.string.wizard_direct_access),
+        ),
+    )
+    Text(
+        stringResource(
+            R.string.wizard_account_summary,
+            host.username,
+            if (created != null) stringResource(R.string.wizard_created_suffix) else "",
+        ),
+    )
+    Text(
+        when (ipmiOutcome) {
+            is HostSetupRunner.IpmiOutcome.Available -> stringResource(
+                R.string.wizard_ipmi_summary_enabled,
+                stringResource(ipmiOutcome.privilege.labelResource()),
+            )
+            else -> stringResource(R.string.wizard_ipmi_summary_disabled)
         },
     )
     firmware?.takeIf { it.version.isNotBlank() }?.let {
-        Text("Micrologiciel iLO : ${it.version}" + it.date.takeIf { d -> d.isNotBlank() }?.let { d -> " ($d)" }.orEmpty())
+        Text(
+            stringResource(
+                R.string.wizard_firmware_summary,
+                it.version,
+                it.date.takeIf(String::isNotBlank)?.let { date -> " ($date)" }.orEmpty(),
+            ),
+        )
     }
 
     if (firmware != null && isOlderThanTested(firmware.version)) {
         Spacer()
         Text(
-            "Micrologiciel plus ancien que testé",
+            stringResource(R.string.wizard_firmware_old_title),
             color = MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.titleSmall,
         )
         Text(
-            "Cet iLO est en ${firmware.version}, alors que l'application n'a été vérifiée que " +
-                "sur la $TESTED_ILO_VERSION. Deux conséquences distinctes. D'abord, les " +
-                "micrologiciels iLO plus récents corrigent des failles de sécurité : un BMC est " +
-                "joignable par le réseau, garde vos identifiants et commande l'alimentation du " +
-                "serveur, donc le laisser en retard n'est pas une question de confort. Ensuite, " +
-                "certaines commandes dont l'application se sert peuvent différer sur cette " +
-                "version — si un onglet reste vide ou renvoie une erreur, c'est la première " +
-                "piste.",
+            stringResource(R.string.wizard_firmware_old_warning, firmware.version, TESTED_ILO_VERSION),
             color = MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.bodySmall,
         )
         Text(
-            "La mise à jour se fait depuis l'interface web de l'iLO, ou en lui faisant récupérer " +
-                "l'image lui-même. Elle n'est pas déclenchée par l'application.",
+            stringResource(R.string.wizard_firmware_update_help),
             style = MaterialTheme.typography.bodySmall,
         )
     }
 
     Spacer()
     Text(
-        "Rien n'est encore enregistré sur le téléphone : « Enregistrer » ajoute ce serveur à la " +
-            "liste.",
+        stringResource(R.string.wizard_not_saved_yet),
         style = MaterialTheme.typography.bodySmall,
     )
 }

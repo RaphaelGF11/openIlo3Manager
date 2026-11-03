@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -44,8 +45,11 @@ import kotlinx.coroutines.withContext
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import net.raphaelgf11.ilo3manager.data.NetworkConfig
+import net.raphaelgf11.ilo3manager.R
 import net.raphaelgf11.ilo3manager.data.NetworkRepository
 import net.raphaelgf11.ilo3manager.data.NetworkType
+import net.raphaelgf11.ilo3manager.ui.common.detailResource
+import net.raphaelgf11.ilo3manager.ui.common.labelResource
 import net.raphaelgf11.ilo3manager.ui.common.RadioRow
 import net.raphaelgf11.ilo3manager.ui.host.PortraitCaptureActivity
 import net.raphaelgf11.ilo3manager.vpn.SecondaryAddressManager
@@ -94,10 +98,12 @@ fun AddEditNetworkScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (existingNetwork == null) "Nouveau réseau" else "Modifier le réseau") },
+                title = {
+                    Text(stringResource(if (existingNetwork == null) R.string.network_editor_new else R.string.network_editor_edit))
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Retour")
+                        Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
             )
@@ -128,7 +134,7 @@ fun AddEditNetworkScreen(
                         .imePadding()
                         .padding(16.dp),
                 ) {
-                    Text("Enregistrer")
+                    Text(stringResource(R.string.common_save))
                 }
             }
         },
@@ -143,23 +149,22 @@ fun AddEditNetworkScreen(
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("Nom du réseau") },
+                label = { Text(stringResource(R.string.network_name_label)) },
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer()
             Text(
-                "Ce nom est ce que vous choisirez dans l'onglet Général d'un serveur. Plusieurs " +
-                    "serveurs peuvent partager le même réseau : ils partageront alors un seul tunnel.",
+                stringResource(R.string.network_name_help),
                 style = MaterialTheme.typography.bodySmall,
             )
 
             Spacer()
-            Text("Type", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.network_type), style = MaterialTheme.typography.titleSmall)
             NetworkType.entries.forEach { candidate ->
                 RadioRow(
                     selected = type == candidate,
-                    label = candidate.label,
-                    detail = candidate.detail,
+                    label = stringResource(candidate.labelResource()),
+                    detail = stringResource(candidate.detailResource()),
                     onSelect = { type = candidate },
                 )
             }
@@ -173,7 +178,7 @@ fun AddEditNetworkScreen(
                     onScanQrCode = {
                         qrScanner.launch(ScanOptions().apply {
                             setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-                            setPrompt("Scannez le QR code WireGuard")
+                            setPrompt(context.getString(R.string.network_scan_prompt))
                             setBeepEnabled(false)
                             setCaptureActivity(PortraitCaptureActivity::class.java)
                         })
@@ -203,17 +208,17 @@ private fun WireGuardEditor(
 ) {
     Row {
         OutlinedButton(onClick = onImportFile) {
-            Text("Importer un .conf")
+            Text(stringResource(R.string.network_import_conf))
         }
         OutlinedButton(onClick = onScanQrCode, modifier = Modifier.padding(start = 8.dp)) {
-            Text("Scanner un QR code")
+            Text(stringResource(R.string.network_scan_qr))
         }
     }
     Spacer()
     OutlinedTextField(
         value = config,
         onValueChange = onConfigChange,
-        label = { Text("Configuration WireGuard (collez, importez ou scannez)") },
+        label = { Text(stringResource(R.string.network_wireguard_label)) },
         modifier = Modifier.fillMaxWidth(),
         minLines = 6,
     )
@@ -224,17 +229,20 @@ private fun WireGuardEditor(
     if (config.isNotBlank()) {
         runCatching { WireGuardConfigParser.parse(config) }.fold(
             onSuccess = { wg ->
-                Text("Configuration valide", style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.network_wireguard_valid), style = MaterialTheme.typography.titleSmall)
                 Text(
-                    "Pair : ${wg.endpoint}\n" +
-                        "Adresse locale : ${wg.addresses.joinToString(", ")}\n" +
-                        "Réseaux routés : ${wg.allowedIps.joinToString(", ")}",
+                    stringResource(
+                        R.string.network_wireguard_summary,
+                        wg.endpoint,
+                        wg.addresses.joinToString(", "),
+                        wg.allowedIps.joinToString(", "),
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                 )
             },
             onFailure = { error ->
                 Text(
-                    error.message ?: "Configuration illisible",
+                    error.message ?: stringResource(R.string.network_config_unreadable),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -251,21 +259,21 @@ private fun SshTunnelEditor(config: String, onConfigChange: (String) -> Unit) {
     }
 
     Text(
-        "Les connexions vers l'iLO sont relayées par cette machine intermédiaire.",
+        stringResource(R.string.network_ssh_relay_help),
         style = MaterialTheme.typography.bodySmall,
     )
     Spacer()
     OutlinedTextField(
         value = tunnel.host,
         onValueChange = { v -> update { copy(host = v) } },
-        label = { Text("Hôte de rebond") },
+        label = { Text(stringResource(R.string.network_ssh_relay_host)) },
         modifier = Modifier.fillMaxWidth(),
     )
     Spacer()
     OutlinedTextField(
         value = tunnel.port.toString(),
         onValueChange = { v -> update { copy(port = v.filter { c -> c.isDigit() }.toIntOrNull() ?: 22) } },
-        label = { Text("Port SSH du rebond") },
+        label = { Text(stringResource(R.string.network_ssh_relay_port)) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         modifier = Modifier.fillMaxWidth(),
     )
@@ -273,14 +281,14 @@ private fun SshTunnelEditor(config: String, onConfigChange: (String) -> Unit) {
     OutlinedTextField(
         value = tunnel.username,
         onValueChange = { v -> update { copy(username = v) } },
-        label = { Text("Utilisateur du rebond") },
+        label = { Text(stringResource(R.string.network_ssh_relay_user)) },
         modifier = Modifier.fillMaxWidth(),
     )
     Spacer()
     OutlinedTextField(
         value = tunnel.password,
         onValueChange = { v -> update { copy(password = v) } },
-        label = { Text("Mot de passe (ou laissez vide et collez une clé)") },
+        label = { Text(stringResource(R.string.network_ssh_relay_password)) },
         visualTransformation = PasswordVisualTransformation(),
         modifier = Modifier.fillMaxWidth(),
     )
@@ -288,14 +296,13 @@ private fun SshTunnelEditor(config: String, onConfigChange: (String) -> Unit) {
     OutlinedTextField(
         value = tunnel.privateKey,
         onValueChange = { v -> update { copy(privateKey = v) } },
-        label = { Text("Clé privée du rebond (optionnel)") },
+        label = { Text(stringResource(R.string.network_ssh_relay_key)) },
         modifier = Modifier.fillMaxWidth(),
         minLines = 3,
     )
     Spacer()
     Text(
-        "Le rebond SSH ne transporte que du TCP. Les serveurs sur ce réseau ne pourront donc pas " +
-            "utiliser IPMI, qui fonctionne en UDP, et repasseront automatiquement par la CLI SSH.",
+        stringResource(R.string.network_ssh_tcp_only),
         color = MaterialTheme.colorScheme.error,
         style = MaterialTheme.typography.bodySmall,
     )
@@ -308,6 +315,7 @@ private fun SecondaryIpEditor(
     address: String,
     onAddressChange: (String) -> Unit,
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
     var outcome by remember { mutableStateOf<Result<String>?>(null) }
@@ -318,12 +326,12 @@ private fun SecondaryIpEditor(
     OutlinedTextField(
         value = interfaceName,
         onValueChange = onInterfaceNameChange,
-        label = { Text("Interface") },
+        label = { Text(stringResource(R.string.network_interface)) },
         isError = interfaceName.isNotBlank() && !isValidInterfaceName(interfaceName),
         supportingText = {
             Text(
-                if (interfaces.isEmpty()) "Par exemple wlan0."
-                else "Sur ce téléphone : ${interfaces.joinToString(", ")}",
+                if (interfaces.isEmpty()) stringResource(R.string.network_interface_example)
+                else stringResource(R.string.network_interfaces_here, interfaces.joinToString(", ")),
             )
         },
         modifier = Modifier.fillMaxWidth(),
@@ -332,14 +340,14 @@ private fun SecondaryIpEditor(
     OutlinedTextField(
         value = address,
         onValueChange = onAddressChange,
-        label = { Text("Adresse à ajouter, en notation CIDR") },
+        label = { Text(stringResource(R.string.network_address_cidr)) },
         isError = address.isNotBlank() && !isValidCidr(address),
         supportingText = {
             Text(
                 if (address.isNotBlank() && !isValidCidr(address)) {
-                    "Adresse IPv4 avec préfixe attendue, par exemple 192.168.1.9/24."
+                    stringResource(R.string.network_cidr_invalid)
                 } else {
-                    "Par exemple 192.168.1.9/24, sur le même sous-réseau que le serveur."
+                    stringResource(R.string.network_cidr_help)
                 },
             )
         },
@@ -347,10 +355,7 @@ private fun SecondaryIpEditor(
     )
     Spacer()
     Text(
-        "Contrairement aux tunnels, cette adresse est une vraie adresse que le réseau peut " +
-            "joindre en retour, ce dont certains protocoles ont besoin — les traps SNMP de " +
-            "l'iLO en particulier. L'application la pose sur l'interface à chaque connexion, " +
-            "ce qui la fait survivre à un redémarrage ou à une reconnexion du Wi-Fi.",
+        stringResource(R.string.network_secondary_help),
         style = MaterialTheme.typography.bodySmall,
     )
 
@@ -370,14 +375,14 @@ private fun SecondaryIpEditor(
                         ),
                     )
                 }
-                outcome = result.map { "Adresse posée sur $interfaceName." }
+                outcome = result.map { context.getString(R.string.network_address_applied, interfaceName) }
                 busy = false
             }
         },
         enabled = !busy && isValidInterfaceName(interfaceName) && isValidCidr(address),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Text(if (busy) "Demande de root en cours…" else "Poser l'adresse maintenant")
+        Text(stringResource(if (busy) R.string.network_root_request else R.string.network_apply_address))
     }
 
     outcome?.let { result ->
@@ -388,7 +393,7 @@ private fun SecondaryIpEditor(
                 onFailure = {
                     // The ordinary case on an unrooted phone, and worth naming as such rather
                     // than leaving the user to read a shell error.
-                    it.message ?: "Root refusé ou indisponible sur ce téléphone."
+                    it.message ?: stringResource(R.string.network_root_denied)
                 },
             ),
             color = if (result.isFailure) MaterialTheme.colorScheme.error else Color.Unspecified,
@@ -398,8 +403,7 @@ private fun SecondaryIpEditor(
 
     Spacer()
     Text(
-        "Nécessite le root : aucune API Android n'expose la configuration d'adresses. Sans lui, " +
-            "ce type de réseau ne peut pas fonctionner.",
+        stringResource(R.string.network_root_required),
         style = MaterialTheme.typography.bodySmall,
     )
 }

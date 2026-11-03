@@ -30,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import net.raphaelgf11.ilo3manager.R
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.raphaelgf11.ilo3manager.ilo.VspSessionController
 import net.raphaelgf11.ilo3manager.ssh.ConnectionState
@@ -62,11 +64,11 @@ fun VspTab(controller: VspSessionController) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp))
-                    Text("Connexion au port série virtuel…")
+                    Text(stringResource(R.string.vsp_connecting))
                 }
                 ConnectionState.ERROR, ConnectionState.DISCONNECTED -> {
                     Text(
-                        text = error ?: "Non connecté",
+                        text = error ?: stringResource(R.string.power_not_connected),
                         modifier = Modifier.padding(8.dp),
                     )
                 }
@@ -94,7 +96,7 @@ fun VspTab(controller: VspSessionController) {
                         value = command,
                         onValueChange = { command = it },
                         modifier = Modifier.weight(1f),
-                        label = { Text("Commande") },
+                        label = { Text(stringResource(R.string.vsp_command)) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(
@@ -108,7 +110,7 @@ fun VspTab(controller: VspSessionController) {
                         controller.sendCommand(command)
                         command = ""
                     }) {
-                        Icon(Icons.Filled.Send, contentDescription = "Envoyer")
+                        Icon(Icons.Filled.Send, contentDescription = stringResource(R.string.common_send))
                     }
                 }
             } else if (state != ConnectionState.CONNECTING) {
@@ -118,7 +120,7 @@ fun VspTab(controller: VspSessionController) {
                         .fillMaxWidth()
                         .padding(8.dp),
                 ) {
-                    Text("Reconnexion")
+                    Text(stringResource(R.string.power_reconnect))
                 }
             }
         }

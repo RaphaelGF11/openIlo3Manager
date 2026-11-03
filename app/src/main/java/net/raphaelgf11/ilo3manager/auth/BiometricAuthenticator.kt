@@ -5,6 +5,7 @@ import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK
 import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
 import androidx.biometric.BiometricPrompt
 import androidx.fragment.app.FragmentActivity
+import net.raphaelgf11.ilo3manager.R
 
 private const val ALLOWED_AUTHENTICATORS = BIOMETRIC_WEAK or DEVICE_CREDENTIAL
 
@@ -35,8 +36,8 @@ fun showBiometricPrompt(
     )
 
     val info = BiometricPrompt.PromptInfo.Builder()
-        .setTitle("Déverrouiller iLO3 Manager")
-        .setSubtitle("Authentification requise pour accéder à vos hôtes")
+        .setTitle(activity.getString(R.string.biometric_unlock_title))
+        .setSubtitle(activity.getString(R.string.biometric_unlock_subtitle))
         .setAllowedAuthenticators(ALLOWED_AUTHENTICATORS)
         .build()
 

@@ -20,6 +20,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import net.raphaelgf11.ilo3manager.R
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -41,10 +43,10 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Réglages") },
+                title = { Text(stringResource(R.string.common_settings)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Retour")
+                        Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
             )
@@ -61,9 +63,9 @@ fun SettingsScreen(
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
         ) {
-            Text("Actualisation automatique", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.settings_refresh_title), style = MaterialTheme.typography.titleMedium)
             Text(
-                "Intervalle entre deux rafraîchissements de l'onglet Alimentation, décompté depuis la fin du précédent.",
+                stringResource(R.string.settings_refresh_description),
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(bottom = 12.dp, top = 4.dp),
             )
@@ -88,11 +90,9 @@ fun SettingsScreen(
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                    Text("Rafraîchir plus souvent en IPMI")
+                    Text(stringResource(R.string.settings_ipmi_faster))
                     Text(
-                        "IPMI répond en quelques dizaines de millisecondes, là où SSH demande " +
-                            "plusieurs secondes : l'intervalle ci-dessus est divisé lorsque " +
-                            "l'onglet Alimentation passe par IPMI.",
+                        stringResource(R.string.settings_ipmi_faster_description),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -117,7 +117,7 @@ fun SettingsScreen(
                 }
                 val effective = settings.refreshSecondsFor(usesIpmi = true)
                 Text(
-                    "Soit ${effective}s en IPMI, contre ${settings.autoRefreshSeconds}s en SSH.",
+                    stringResource(R.string.settings_ipmi_effective, effective, settings.autoRefreshSeconds),
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(top = 4.dp),
                 )

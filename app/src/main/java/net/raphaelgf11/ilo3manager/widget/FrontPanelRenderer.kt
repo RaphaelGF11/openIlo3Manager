@@ -2,6 +2,7 @@ package net.raphaelgf11.ilo3manager.widget
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.content.res.Resources
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
@@ -10,6 +11,7 @@ import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
+import net.raphaelgf11.ilo3manager.R
 
 /**
  * Draws the DL380 G7 Systems Insight Display.
@@ -39,25 +41,25 @@ object FrontPanelRenderer {
     private const val LABEL_FACE = 0xFF1A1D22.toInt()
     private const val LED_WELL = 0xFF23262C.toInt()
 
-    fun render(state: PanelState, widthPx: Int): Bitmap {
+    fun render(state: PanelState, widthPx: Int, resources: Resources): Bitmap {
         val heightPx = (widthPx / ASPECT).toInt().coerceAtLeast(1)
         val bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.scale(widthPx / WIDTH, heightPx / HEIGHT)
-        draw(canvas, state)
+        draw(canvas, state, resources)
         return bitmap
     }
 
-    private fun draw(canvas: Canvas, state: PanelState) {
+    private fun draw(canvas: Canvas, state: PanelState, resources: Resources) {
         drawChassis(canvas)
         drawLabel(canvas)
         drawNicRow(canvas, state)
-        drawPowerSupplies(canvas, state)
-        drawOverTempAndCap(canvas, state)
-        drawDimms(canvas, state)
-        drawProcessorsAndAmp(canvas, state)
-        drawFans(canvas, state)
-        drawRightColumn(canvas, state)
+        drawPowerSupplies(canvas, state, resources)
+        drawOverTempAndCap(canvas, state, resources)
+        drawDimms(canvas, state, resources)
+        drawProcessorsAndAmp(canvas, state, resources)
+        drawFans(canvas, state, resources)
+        drawRightColumn(canvas, state, resources)
         drawAmbient(canvas, state)
     }
 
@@ -204,18 +206,18 @@ object FrontPanelRenderer {
 
     // ---------------------------------------------------------- power supplies
 
-    private fun drawPowerSupplies(canvas: Canvas, state: PanelState) {
-        drawPsuBox(canvas, RectF(140f, 175f, 285f, 320f), 1, state.psus.getOrElse(0) { Led.OFF })
-        drawPsuBox(canvas, RectF(300f, 175f, 445f, 320f), 2, state.psus.getOrElse(1) { Led.OFF })
+    private fun drawPowerSupplies(canvas: Canvas, state: PanelState, resources: Resources) {
+        drawPsuBox(canvas, RectF(140f, 175f, 285f, 320f), 1, state.psus.getOrElse(0) { Led.OFF }, resources)
+        drawPsuBox(canvas, RectF(300f, 175f, 445f, 320f), 2, state.psus.getOrElse(1) { Led.OFF }, resources)
     }
 
-    private fun drawPsuBox(canvas: Canvas, rect: RectF, index: Int, led: Led) {
+    private fun drawPsuBox(canvas: Canvas, rect: RectF, index: Int, led: Led, resources: Resources) {
         canvas.drawRect(rect, strokePaint(2f))
         drawPsuGlyph(canvas, rect.left + 34f, rect.top + 38f)
         drawLed(canvas, rect.left + 80f, rect.top + 38f, 13f, led)
         canvas.drawText("$index", rect.left + 113f, rect.top + 50f, textPaint(32f))
-        canvas.drawText("POWER", rect.centerX(), rect.top + 100f, textPaint(28f))
-        canvas.drawText("SUPPLY", rect.centerX(), rect.top + 130f, textPaint(28f))
+        canvas.drawText(resources.getString(R.string.widget_front_power), rect.centerX(), rect.top + 100f, textPaint(28f))
+        canvas.drawText(resources.getString(R.string.widget_front_supply), rect.centerX(), rect.top + 130f, textPaint(28f))
     }
 
     /**
@@ -240,18 +242,18 @@ object FrontPanelRenderer {
 
     // ------------------------------------------------------ over temp / p-cap
 
-    private fun drawOverTempAndCap(canvas: Canvas, state: PanelState) {
+    private fun drawOverTempAndCap(canvas: Canvas, state: PanelState, resources: Resources) {
         val temp = RectF(530f, 172f, 755f, 250f)
         canvas.drawRoundRect(temp, 39f, 39f, strokePaint(2f))
-        canvas.drawText("OVER", temp.left + 72f, temp.top + 33f, textPaint(28f))
-        canvas.drawText("TEMP", temp.left + 72f, temp.top + 63f, textPaint(28f))
+        canvas.drawText(resources.getString(R.string.widget_front_overtemp), temp.left + 72f, temp.top + 33f, textPaint(28f))
+        canvas.drawText(resources.getString(R.string.widget_front_temp), temp.left + 72f, temp.top + 63f, textPaint(28f))
         drawThermometer(canvas, temp.left + 148f, temp.centerY())
         drawLed(canvas, temp.right - 28f, temp.centerY(), 13f, state.overTemp)
 
         val cap = RectF(530f, 266f, 755f, 342f)
         canvas.drawRoundRect(cap, 38f, 38f, strokePaint(2f))
-        canvas.drawText("POWER", cap.left + 84f, cap.top + 32f, textPaint(28f))
-        canvas.drawText("CAP", cap.left + 84f, cap.top + 62f, textPaint(28f))
+        canvas.drawText(resources.getString(R.string.widget_front_power_cap), cap.left + 84f, cap.top + 32f, textPaint(28f))
+        canvas.drawText(resources.getString(R.string.widget_front_cap), cap.left + 84f, cap.top + 62f, textPaint(28f))
         drawLed(canvas, cap.right - 30f, cap.centerY(), 13f, state.powerCap)
     }
 
@@ -272,8 +274,8 @@ object FrontPanelRenderer {
     private const val DIMM_TOP = 439f
     private const val DIMM_BAR_H = 136f
 
-    private fun drawDimms(canvas: Canvas, state: PanelState) {
-        canvas.drawText("DIMMS", 460f, 385f, textPaint(34f))
+    private fun drawDimms(canvas: Canvas, state: PanelState, resources: Resources) {
+        canvas.drawText(resources.getString(R.string.hardware_tab_memory), 460f, 385f, textPaint(34f))
         // Nine slots per bank, side by side. The left bank counts down from 9, the right counts up
         // from 1, which is what puts slot 1 of each bank either side of the centre line.
         drawDimmBank(canvas, 152f, state.dimmsLeft) { i -> 9 - i }
@@ -315,23 +317,23 @@ object FrontPanelRenderer {
 
     // ------------------------------------------------------- processors / AMP
 
-    private fun drawProcessorsAndAmp(canvas: Canvas, state: PanelState) {
-        drawProcBox(canvas, RectF(192f, 617f, 336f, 759f), 2, state.procs.getOrElse(1) { Led.OFF })
-        drawProcBox(canvas, RectF(625f, 617f, 769f, 759f), 1, state.procs.getOrElse(0) { Led.OFF })
+    private fun drawProcessorsAndAmp(canvas: Canvas, state: PanelState, resources: Resources) {
+        drawProcBox(canvas, RectF(192f, 617f, 336f, 759f), 2, state.procs.getOrElse(1) { Led.OFF }, resources)
+        drawProcBox(canvas, RectF(625f, 617f, 769f, 759f), 1, state.procs.getOrElse(0) { Led.OFF }, resources)
 
         val amp = RectF(360f, 623f, 599f, 692f)
         canvas.drawRoundRect(amp, 34f, 34f, strokePaint(2f))
-        canvas.drawText("AMP", amp.left + 88f, amp.top + 30f, textPaint(28f))
-        canvas.drawText("STATUS", amp.left + 88f, amp.top + 59f, textPaint(28f))
+        canvas.drawText(resources.getString(R.string.widget_front_amp), amp.left + 88f, amp.top + 30f, textPaint(28f))
+        canvas.drawText(resources.getString(R.string.widget_front_status), amp.left + 88f, amp.top + 59f, textPaint(28f))
         drawLed(canvas, amp.right - 32f, amp.centerY(), 13f, state.ampStatus)
     }
 
-    private fun drawProcBox(canvas: Canvas, rect: RectF, index: Int, led: Led) {
+    private fun drawProcBox(canvas: Canvas, rect: RectF, index: Int, led: Led, resources: Resources) {
         canvas.drawRect(rect, strokePaint(2f))
         drawChipGlyph(canvas, rect.left + 36f, rect.top + 40f)
         drawLed(canvas, rect.left + 84f, rect.top + 40f, 13f, led)
         canvas.drawText("$index", rect.left + 117f, rect.top + 52f, textPaint(32f))
-        canvas.drawText("PROC", rect.centerX(), rect.bottom - 16f, textPaint(28f))
+        canvas.drawText(resources.getString(R.string.widget_front_processor), rect.centerX(), rect.bottom - 16f, textPaint(28f))
     }
 
     /** A packaged processor: a body with an exposed die and a row of pins top and bottom. */
@@ -347,8 +349,8 @@ object FrontPanelRenderer {
 
     // ------------------------------------------------------------------- fans
 
-    private fun drawFans(canvas: Canvas, state: PanelState) {
-        canvas.drawText("FANS", 470f, 793f, textPaint(34f))
+    private fun drawFans(canvas: Canvas, state: PanelState, resources: Resources) {
+        canvas.drawText(resources.getString(R.string.widget_front_fans), 470f, 793f, textPaint(34f))
         val top = 805f
         val bottom = 873f
         val left = 152f
@@ -413,8 +415,8 @@ object FrontPanelRenderer {
 
     // ----------------------------------------------------------- right column
 
-    private fun drawRightColumn(canvas: Canvas, state: PanelState) {
-        canvas.drawText("UID", 950f, 50f, textPaint(38f))
+    private fun drawRightColumn(canvas: Canvas, state: PanelState, resources: Resources) {
+        canvas.drawText(resources.getString(R.string.widget_front_uid), 950f, 50f, textPaint(38f))
         drawUidButton(canvas, 950f, 135f, state.uid)
 
         drawHeartbeatGlyph(canvas, 950f, 292f)

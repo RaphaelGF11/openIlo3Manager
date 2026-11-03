@@ -25,6 +25,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.google.android.gms.auth.api.signin.GoogleSignIn
@@ -35,6 +36,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.raphaelgf11.ilo3manager.backup.BackupSecretStore
+import net.raphaelgf11.ilo3manager.R
 import net.raphaelgf11.ilo3manager.backup.DriveSync
 import net.raphaelgf11.ilo3manager.data.HostRepository
 import net.raphaelgf11.ilo3manager.data.NetworkRepository
@@ -79,18 +81,19 @@ fun DriveSyncSection(hostRepository: HostRepository) {
             .onFailure { failure ->
                 val status = (failure as? ApiException)?.statusCode
                 error = when (status) {
-                    CommonStatusCodes.DEVELOPER_ERROR ->
-                        "Erreur de configuration (code 10) : le client OAuth Android du projet " +
-                            "Google Cloud ne correspond pas au paquet ou à l'empreinte SHA-1 de " +
-                            "cette build."
-                    CommonStatusCodes.NETWORK_ERROR -> "Erreur réseau (code 7)."
-                    GoogleSignInStatusCodes.SIGN_IN_CANCELLED -> "Connexion annulée."
-                    else -> "Échec de la connexion Google (code ${status ?: "inconnu"}) : ${failure.message}"
+                    CommonStatusCodes.DEVELOPER_ERROR -> context.getString(R.string.drive_oauth_config_error)
+                    CommonStatusCodes.NETWORK_ERROR -> context.getString(R.string.drive_network_error)
+                    GoogleSignInStatusCodes.SIGN_IN_CANCELLED -> context.getString(R.string.drive_signin_cancelled)
+                    else -> context.getString(
+                        R.string.drive_signin_failed,
+                        status?.toString() ?: context.getString(R.string.health_unknown),
+                        failure.message.orEmpty(),
+                    )
                 }
             }
     }
 
-    fun run(label: String, block: suspend () -> String) {
+    fun run(label: Int, block: suspend () -> String) {
         busy = true
         error = null
         message = null
@@ -98,7 +101,10 @@ fun DriveSyncSection(hostRepository: HostRepository) {
             try {
                 message = withContext(Dispatchers.IO) { block() }
             } catch (e: Exception) {
-                error = e.message ?: "Échec de $label"
+                error = e.message ?: context.getString(
+                    R.string.drive_operation_failed,
+                    context.getString(label),
+                )
             } finally {
                 busy = false
             }
@@ -107,20 +113,16 @@ fun DriveSyncSection(hostRepository: HostRepository) {
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-        Text("Sauvegarde Google Drive", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.drive_title), style = MaterialTheme.typography.titleMedium)
         Text(
-            "La configuration est chiffrée sur l'appareil, puis déposée dans l'espace privé de " +
-                "l'application sur votre Drive : elle n'apparaît pas dans l'interface Drive et " +
-                "n'est pas téléchargeable depuis celle-ci.",
+            stringResource(R.string.drive_description),
             style = MaterialTheme.typography.bodySmall,
         )
         // Google's granular consent lists the scope as an optional, unchecked box: validating
         // without ticking it links the account and grants nothing. No app can pre-tick it, so the
         // only remedy is to say so before the screen appears.
         Text(
-            "Sur l'écran Google, pensez à cocher la case « données de configuration dans Google " +
-                "Drive » : elle est décochée par défaut, et sans elle le compte est connecté sans " +
-                "aucun accès.",
+            stringResource(R.string.drive_consent_warning),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error,
         )
@@ -130,7 +132,7 @@ fun DriveSyncSection(hostRepository: HostRepository) {
                 onClick = { signIn.launch(DriveSync.signInClient(context).signInIntent) },
                 enabled = !busy,
             ) {
-                Text("Connecter un compte Google")
+                Text(stringResource(R.string.drive_connect))
             }
         } else {
             Row(
@@ -138,7 +140,7 @@ fun DriveSyncSection(hostRepository: HostRepository) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
             ) {
-                Text("Compte : $account", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.drive_account, account.orEmpty()), style = MaterialTheme.typography.bodySmall)
                 OutlinedButton(
                     onClick = {
                         // Revoking rather than merely signing out, so the next connection asks for
@@ -146,12 +148,12 @@ fun DriveSyncSection(hostRepository: HostRepository) {
                         DriveSync.revokeAccess(context) {
                             account = null
                             hasConsent = false
-                            message = "Compte déconnecté."
+                            message = context.getString(R.string.drive_disconnected)
                         }
                     },
                     enabled = !busy,
                 ) {
-                    Text("Déconnecter")
+                    Text(stringResource(R.string.drive_disconnect))
                 }
             }
 
@@ -159,9 +161,7 @@ fun DriveSyncSection(hostRepository: HostRepository) {
             // connected while every backup would fail for lack of permission.
             if (!hasConsent) {
                 Text(
-                    "Ce compte est connecté mais n'a pas accordé l'accès à l'espace privé Drive : " +
-                        "la sauvegarde échouerait. La case correspondante est restée décochée sur " +
-                        "l'écran de consentement — relancez l'autorisation et cochez-la.",
+                    stringResource(R.string.drive_missing_consent),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -176,7 +176,7 @@ fun DriveSyncSection(hostRepository: HostRepository) {
                     },
                     enabled = !busy,
                 ) {
-                    Text("Autoriser l'accès à Google Drive")
+                    Text(stringResource(R.string.drive_authorize))
                 }
             }
         }
@@ -187,22 +187,20 @@ fun DriveSyncSection(hostRepository: HostRepository) {
                 secret = it
                 secretStore.secret = it
             },
-            label = { Text("Phrase secrète ou code de chiffrement") },
+            label = { Text(stringResource(R.string.drive_secret_label)) },
             visualTransformation = PasswordVisualTransformation(),
             enabled = !busy,
             modifier = Modifier.fillMaxWidth(),
         )
         Text(
-            "Elle seule permet de relire la sauvegarde, y compris sur un autre téléphone. " +
-                "Conservée chiffrée sur cet appareil pour ne pas vous la redemander — mais " +
-                "oubliée, la sauvegarde devient définitivement illisible.",
+            stringResource(R.string.drive_secret_warning),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error,
         )
 
         if (lastSync > 0) {
             Text(
-                "Dernière sauvegarde : " + DateFormat.getDateTimeInstance().format(Date(lastSync)),
+                stringResource(R.string.drive_last_backup, DateFormat.getDateTimeInstance().format(Date(lastSync))),
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -210,22 +208,22 @@ fun DriveSyncSection(hostRepository: HostRepository) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
             Button(
                 onClick = {
-                    run("la sauvegarde") {
+                    run(R.string.drive_backup_label) {
                         DriveSync.backup(context, hostRepository, networkRepository, secret)
                         val now = System.currentTimeMillis()
                         secretStore.lastSyncAt = now
                         lastSync = now
-                        "Sauvegarde envoyée."
+                        context.getString(R.string.drive_backup_success)
                     }
                 },
                 enabled = !busy && account != null && hasConsent && secret.isNotBlank(),
                 modifier = Modifier.weight(1f),
             ) {
-                Text("Sauvegarder")
+                Text(stringResource(R.string.drive_backup))
             }
             OutlinedButton(
                 onClick = {
-                    run("la restauration") {
+                    run(R.string.drive_restore_label) {
                         val contents = DriveSync.fetchBackup(context, secret)
                         // Written only once decryption has succeeded, so a wrong secret or an
                         // unreadable backup can never leave the device half-restored.
@@ -235,13 +233,17 @@ fun DriveSyncSection(hostRepository: HostRepository) {
                         // folding them now means the restore is complete when it says it is,
                         // rather than at the next launch.
                         networkRepository.migrateLegacyVpn(hostRepository)
-                        "${contents.hosts.size} hôte(s) et ${networkRepository.getNetworks().size} réseau(x) restauré(s)."
+                        context.getString(
+                            R.string.drive_restore_summary,
+                            contents.hosts.size,
+                            networkRepository.getNetworks().size,
+                        )
                     }
                 },
                 enabled = !busy && account != null && hasConsent && secret.isNotBlank(),
                 modifier = Modifier.weight(1f),
             ) {
-                Text("Restaurer")
+                Text(stringResource(R.string.drive_restore))
             }
         }
 
@@ -252,13 +254,13 @@ fun DriveSyncSection(hostRepository: HostRepository) {
             enabled = !busy && account != null && hasConsent,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("Supprimer la sauvegarde", color = MaterialTheme.colorScheme.error)
+            Text(stringResource(R.string.drive_delete_backup), color = MaterialTheme.colorScheme.error)
         }
 
         if (busy) {
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                Text("  Opération en cours…", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.drive_operation_progress), style = MaterialTheme.typography.bodySmall)
             }
         }
         message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -268,29 +270,27 @@ fun DriveSyncSection(hostRepository: HostRepository) {
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("Supprimer la sauvegarde ?") },
+            title = { Text(stringResource(R.string.drive_delete_title)) },
             text = {
                 Text(
-                    "Le fichier sera effacé de votre Drive. Si cet appareil est le seul à porter " +
-                        "vos hôtes, leurs identifiants n'existeront plus nulle part ailleurs. " +
-                        "Le compte Google reste connecté.",
+                    stringResource(R.string.drive_delete_message),
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDelete = false
-                    run("la suppression") {
+                    run(R.string.drive_delete_label) {
                         DriveSync.deleteBackup(context)
                         secretStore.lastSyncAt = 0L
                         lastSync = 0L
-                        "Sauvegarde supprimée de Google Drive."
+                        context.getString(R.string.drive_delete_success)
                     }
                 }) {
-                    Text("Supprimer", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { confirmDelete = false }) { Text("Annuler") }
+                TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.common_cancel)) }
             },
         )
     }

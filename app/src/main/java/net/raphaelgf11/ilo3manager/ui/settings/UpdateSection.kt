@@ -25,6 +25,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import net.raphaelgf11.ilo3manager.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -55,9 +57,9 @@ fun UpdateSection(settings: SettingsRepository) {
         scope.launch {
             try {
                 update = withContext(Dispatchers.IO) { UpdateChecker.check(context) }
-                if (update == null) status = "L'application est à jour."
+                if (update == null) status = context.getString(R.string.updates_up_to_date)
             } catch (e: Exception) {
-                error = e.message ?: "Vérification impossible"
+                error = e.message ?: context.getString(R.string.updates_check_failed)
             } finally {
                 checking = false
             }
@@ -68,11 +70,11 @@ fun UpdateSection(settings: SettingsRepository) {
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-        Text("Mises à jour", style = MaterialTheme.typography.titleMedium)
-        Text("Version installée : ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.updates_title), style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.updates_installed_version, BuildConfig.VERSION_NAME), style = MaterialTheme.typography.bodySmall)
 
         update?.let { available ->
-            Text("Version ${available.version} disponible", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.updates_available_version, available.version), style = MaterialTheme.typography.titleSmall)
             if (available.notes.isNotBlank()) {
                 Text(
                     available.notes.lineSequence().take(6).joinToString("\n"),
@@ -98,7 +100,7 @@ fun UpdateSection(settings: SettingsRepository) {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             OutlinedButton(onClick = ::check, enabled = !checking && !downloading, modifier = Modifier.weight(1f)) {
-                Text(if (checking) "Vérification…" else "Vérifier")
+                Text(stringResource(if (checking) R.string.updates_checking else R.string.updates_check))
             }
             update?.let { available ->
                 Button(
@@ -106,22 +108,22 @@ fun UpdateSection(settings: SettingsRepository) {
                         if (!ApkInstaller.canRequestInstall(context)) {
                             // Asking for the permission first avoids downloading tens of megabytes
                             // only to be blocked at the last step.
-                            error = "Autorisez d'abord l'installation d'applications depuis cette source."
+                            error = context.getString(R.string.updates_install_permission)
                             ApkInstaller.openInstallPermissionSettings(context)
                             return@Button
                         }
                         downloading = true
                         error = null
-                        status = "Téléchargement…"
+                        status = context.getString(R.string.updates_downloading)
                         scope.launch {
                             try {
                                 val apk = withContext(Dispatchers.IO) {
                                     ApkInstaller.download(context, available.apkUrl) { progress = it }
                                 }
-                                status = "Installation…"
+                                status = context.getString(R.string.updates_installing)
                                 ApkInstaller.install(context, apk)
                             } catch (e: Exception) {
-                                error = e.message ?: "Mise à jour impossible"
+                                error = e.message ?: context.getString(R.string.updates_install_failed)
                             } finally {
                                 downloading = false
                             }
@@ -130,7 +132,7 @@ fun UpdateSection(settings: SettingsRepository) {
                     enabled = !downloading,
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("Mettre à jour")
+                    Text(stringResource(R.string.updates_action))
                 }
             }
         }
@@ -142,7 +144,7 @@ fun UpdateSection(settings: SettingsRepository) {
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Voir les notes de version")
+                Text(stringResource(R.string.updates_release_notes))
             }
         }
 
@@ -152,10 +154,9 @@ fun UpdateSection(settings: SettingsRepository) {
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                Text("Proposer au démarrage")
+                Text(stringResource(R.string.updates_on_startup))
                 Text(
-                    "Désactivé, les mises à jour restent visibles ici mais aucun dialogue " +
-                        "n'apparaît à l'ouverture de l'application.",
+                    stringResource(R.string.updates_startup_help),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -169,8 +170,7 @@ fun UpdateSection(settings: SettingsRepository) {
         }
 
         Text(
-            "La mise à jour remplace l'application installée : elle doit porter la même signature. " +
-                "Une build de debug ne peut donc pas être remplacée par une version publiée.",
+            stringResource(R.string.updates_signature_help),
             style = MaterialTheme.typography.bodySmall,
         )
     }

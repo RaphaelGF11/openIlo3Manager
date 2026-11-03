@@ -8,6 +8,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import net.raphaelgf11.ilo3manager.R
 import net.raphaelgf11.ilo3manager.update.AvailableUpdate
 
 /**
@@ -26,7 +28,7 @@ fun UpdateAvailableDialog(
 ) {
     AlertDialog(
         onDismissRequest = onLater,
-        title = { Text("Version ${update.version} disponible") },
+        title = { Text(stringResource(R.string.update_available_title, update.version)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (update.notes.isNotBlank()) {
@@ -37,17 +39,17 @@ fun UpdateAvailableDialog(
                 }
                 if (update.apkSizeBytes > 0) {
                     Text(
-                        "Téléchargement : %.1f Mo".format(update.apkSizeBytes / 1_048_576.0),
+                        stringResource(R.string.update_download_size, update.apkSizeBytes / 1_048_576.0),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onSeeMore) { Text("Voir plus") } },
+        confirmButton = { TextButton(onClick = onSeeMore) { Text(stringResource(R.string.update_see_more)) } },
         dismissButton = {
             Column {
-                TextButton(onClick = onLater) { Text("Plus tard") }
-                TextButton(onClick = onNeverAsk) { Text("Ne plus demander") }
+                TextButton(onClick = onLater) { Text(stringResource(R.string.update_later)) }
+                TextButton(onClick = onNeverAsk) { Text(stringResource(R.string.update_never_ask)) }
             }
         },
     )
