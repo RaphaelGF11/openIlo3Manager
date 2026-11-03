@@ -31,30 +31,32 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.raphaelgf11.ilo3manager.ilo.ControlSessionController
+import net.raphaelgf11.ilo3manager.R
 import net.raphaelgf11.ilo3manager.ilo.HardwareComponent
 import net.raphaelgf11.ilo3manager.ssh.ConnectionState
 import net.raphaelgf11.ilo3manager.ui.dashboard.HealthLed
 
 private val CATEGORY_LABELS = mapOf(
-    "fan" to "Ventilateurs",
-    "sensor" to "Capteurs de température",
-    "powersupply" to "Alimentations",
-    "slot" to "Emplacements PCI",
-    "network" to "Réseau",
-    "firmware" to "Firmware",
-    "bootconfig" to "Configuration de démarrage",
-    "log" to "Journal",
-    "led" to "LED",
+    "fan" to R.string.hardware_category_fans,
+    "sensor" to R.string.hardware_category_sensors,
+    "powersupply" to R.string.hardware_category_power_supplies,
+    "slot" to R.string.hardware_category_pci_slots,
+    "network" to R.string.hardware_category_network,
+    "firmware" to R.string.hardware_category_firmware,
+    "bootconfig" to R.string.hardware_category_boot_config,
+    "log" to R.string.hardware_category_log,
+    "led" to R.string.hardware_category_led,
 )
 
-private enum class HardwareSubTab(val title: String) {
-    STATUS("État"),
-    MEMORY("Mémoire"),
-    CPU("CPU"),
-    DRIVES("Disques"),
-    OTHER("Autres"),
+private enum class HardwareSubTab(val title: Int) {
+    STATUS(R.string.hardware_tab_status),
+    MEMORY(R.string.hardware_tab_memory),
+    CPU(R.string.hardware_tab_cpu),
+    DRIVES(R.string.hardware_tab_drives),
+    OTHER(R.string.hardware_tab_other),
 }
 
 @Composable
@@ -82,7 +84,7 @@ fun HardwareTab(controller: ControlSessionController) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     CircularProgressIndicator()
-                    Text(progress ?: "Connexion SSH en cours…")
+                    Text(progress ?: stringResource(R.string.hardware_ssh_connecting))
                 }
             }
         }
@@ -90,7 +92,7 @@ fun HardwareTab(controller: ControlSessionController) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     CircularProgressIndicator()
-                    Text(progress ?: "Chargement de l'état du matériel…")
+                    Text(progress ?: stringResource(R.string.hardware_loading))
                 }
             }
         }
@@ -136,7 +138,7 @@ fun HardwareTab(controller: ControlSessionController) {
                             Tab(
                                 selected = selectedSubTab == index,
                                 onClick = { selectedSubTab = index },
-                                text = { Text("${subTab.title} (${tabContents[subTab]?.size ?: 0})") },
+                                text = { Text("${stringResource(subTab.title)} (${tabContents[subTab]?.size ?: 0})") },
                             )
                         }
                     }
@@ -144,7 +146,7 @@ fun HardwareTab(controller: ControlSessionController) {
                         onClick = { controller.loadHardwareIfNeeded(force = true) },
                         enabled = !loading,
                     ) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Rafraîchir")
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.hardware_refresh))
                     }
                 }
                 HorizontalDivider()
@@ -152,7 +154,7 @@ fun HardwareTab(controller: ControlSessionController) {
                 val components = tabContents[HardwareSubTab.entries[selectedSubTab]].orEmpty()
                 if (components.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("Aucun élément dans cette catégorie.")
+                        Text(stringResource(R.string.hardware_empty_category))
                     }
                 } else {
                     val grouped = components.groupBy { it.category }
@@ -165,7 +167,7 @@ fun HardwareTab(controller: ControlSessionController) {
                             if (grouped.size > 1) {
                                 item {
                                     Text(
-                                        text = CATEGORY_LABELS[category] ?: category,
+                                        text = CATEGORY_LABELS[category]?.let { stringResource(it) } ?: category,
                                         style = MaterialTheme.typography.titleMedium,
                                         modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
                                     )

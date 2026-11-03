@@ -4,6 +4,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import net.raphaelgf11.ilo3manager.R
 import net.raphaelgf11.ilo3manager.ilo.PowerAction
 
 @Composable
@@ -13,21 +15,21 @@ fun PowerActionConfirmationDialog(
     onDismiss: () -> Unit,
 ) {
     val (title, message) = when (action) {
-        PowerAction.RESET -> "Redémarrer le serveur ?" to "Le serveur va redémarrer immédiatement."
-        PowerAction.OFF -> "Arrêter le serveur ?" to "Demande d'arrêt normal (arrêt propre du système d'exploitation)."
-        PowerAction.FORCE_OFF -> "Forcer l'arrêt du serveur ?" to "Coupe l'alimentation immédiatement, sans arrêt propre. Risque de perte de données."
-        PowerAction.ON -> "Démarrer le serveur ?" to ""
+        PowerAction.RESET -> R.string.power_confirm_restart_title to R.string.power_confirm_restart_message
+        PowerAction.OFF -> R.string.power_confirm_stop_title to R.string.power_confirm_stop_message
+        PowerAction.FORCE_OFF -> R.string.power_confirm_force_stop_title to R.string.power_confirm_force_stop_message
+        PowerAction.ON -> R.string.power_confirm_start_title to null
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { Text(message) },
+        title = { Text(stringResource(title)) },
+        text = { message?.let { Text(stringResource(it)) } },
         confirmButton = {
-            TextButton(onClick = onConfirm) { Text("Confirmer") }
+            TextButton(onClick = onConfirm) { Text(stringResource(R.string.common_confirm)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Annuler") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
         },
     )
 }

@@ -19,10 +19,10 @@ object NotificationHelper {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Alertes matériel iLO",
+            context.getString(R.string.notification_channel_hardware),
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = "Alimentation, santé matérielle et échecs de connexion des serveurs surveillés"
+            description = context.getString(R.string.notification_channel_hardware_description)
         }
         manager.createNotificationChannel(channel)
     }

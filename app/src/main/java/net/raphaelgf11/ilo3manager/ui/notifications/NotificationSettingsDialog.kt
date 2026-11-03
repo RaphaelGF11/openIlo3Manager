@@ -24,6 +24,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import net.raphaelgf11.ilo3manager.R
 import androidx.core.app.ActivityCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -58,14 +60,14 @@ fun NotificationSettingsDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Notifications — $hostName") },
+        title = { Text(stringResource(R.string.notifications_title, hostName)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Text("Activer")
+                    Text(stringResource(R.string.notifications_enable))
                     Switch(
                         checked = settings.enabled,
                         onCheckedChange = { checked ->
@@ -76,7 +78,7 @@ fun NotificationSettingsDialog(
                 }
 
                 if (settings.enabled) {
-                    Text("Intervalle de vérification", style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.notifications_interval), style = MaterialTheme.typography.labelLarge)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         INTERVAL_OPTIONS_MINUTES.forEach { minutes ->
                             FilterChip(
@@ -87,20 +89,20 @@ fun NotificationSettingsDialog(
                         }
                     }
 
-                    Text("Événements à notifier", style = MaterialTheme.typography.labelLarge)
-                    ToggleRow("Échec de connexion", settings.notifyOnConnectionFailure) {
+                    Text(stringResource(R.string.notifications_events), style = MaterialTheme.typography.labelLarge)
+                    ToggleRow(stringResource(R.string.notifications_connection_failure), settings.notifyOnConnectionFailure) {
                         settings = settings.copy(notifyOnConnectionFailure = it)
                     }
-                    ToggleRow("Dégradation matérielle (ex: alimentation en échec)", settings.notifyOnDegraded) {
+                    ToggleRow(stringResource(R.string.notifications_hardware_degraded), settings.notifyOnDegraded) {
                         settings = settings.copy(notifyOnDegraded = it)
                     }
-                    ToggleRow("Erreur critique", settings.notifyOnCritical) {
+                    ToggleRow(stringResource(R.string.notifications_critical_error), settings.notifyOnCritical) {
                         settings = settings.copy(notifyOnCritical = it)
                     }
-                    ToggleRow("Serveur éteint", settings.notifyOnPoweredOff) {
+                    ToggleRow(stringResource(R.string.notifications_server_off), settings.notifyOnPoweredOff) {
                         settings = settings.copy(notifyOnPoweredOff = it)
                     }
-                    ToggleRow("Serveur allumé", settings.notifyOnPoweredOn) {
+                    ToggleRow(stringResource(R.string.notifications_server_on), settings.notifyOnPoweredOn) {
                         settings = settings.copy(notifyOnPoweredOn = it)
                     }
                 }
@@ -110,10 +112,10 @@ fun NotificationSettingsDialog(
             TextButton(onClick = {
                 repository.save(hostId, settings)
                 onDismiss()
-            }) { Text("Enregistrer") }
+            }) { Text(stringResource(R.string.common_save)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Annuler") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
         },
     )
 }

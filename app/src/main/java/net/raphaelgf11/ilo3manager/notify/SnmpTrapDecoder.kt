@@ -1,5 +1,8 @@
 package net.raphaelgf11.ilo3manager.notify
 
+import android.content.res.Resources
+import net.raphaelgf11.ilo3manager.R
+
 /**
  * Decodes SNMP trap datagrams.
  *
@@ -53,13 +56,13 @@ const val SNMP_TRAP_OID = "1.3.6.1.6.3.1.1.4.1.0"
 
 /** The generic traps every SNMP agent can send, by their number in the PDU. */
 val GENERIC_TRAP_LABELS = mapOf(
-    0 to "Démarrage à froid",
-    1 to "Démarrage à chaud",
-    2 to "Lien réseau perdu",
-    3 to "Lien réseau rétabli",
-    4 to "Échec d'authentification",
-    5 to "Voisin EGP perdu",
-    6 to "Alerte spécifique au constructeur",
+    0 to R.string.snmp_cold_start,
+    1 to R.string.snmp_warm_start,
+    2 to R.string.snmp_link_down,
+    3 to R.string.snmp_link_up,
+    4 to R.string.snmp_auth_failure,
+    5 to R.string.snmp_egp_neighbor_loss,
+    6 to R.string.snmp_enterprise_alert,
 )
 
 /** Largest datagram worth parsing; anything beyond is not a trap this app should be reading. */
@@ -305,11 +308,11 @@ data class TrapSummary(val title: String, val detail: String)
  * string bindings, which iLO fills with a description of the event. When neither says anything, the
  * numbers are shown rather than a reassuring guess.
  */
-fun describeTrap(trap: SnmpTrap, hostName: String): TrapSummary {
-    val generic = GENERIC_TRAP_LABELS[trap.genericTrap]
+fun describeTrap(trap: SnmpTrap, hostName: String, resources: Resources): TrapSummary {
+    val generic = GENERIC_TRAP_LABELS[trap.genericTrap]?.let(resources::getString)
     val title = when {
-        hostName.isNotBlank() -> "$hostName : alerte matérielle"
-        else -> "Alerte matérielle"
+        hostName.isNotBlank() -> resources.getString(R.string.snmp_alert_host_title, hostName)
+        else -> resources.getString(R.string.snmp_alert_title)
     }
 
     // iLO puts a readable description in its string bindings; the longest is the most specific.
@@ -322,10 +325,10 @@ fun describeTrap(trap: SnmpTrap, hostName: String): TrapSummary {
         when {
             described != null -> append(described)
             generic != null && trap.genericTrap != 6 -> append(generic)
-            trap.isV2c -> append("Trap ${trap.trapOid}")
-            else -> append("Alerte ${trap.enterprise} n° ${trap.specificTrap}")
+            trap.isV2c -> append(resources.getString(R.string.snmp_alert_trap_oid, trap.trapOid))
+            else -> append(resources.getString(R.string.snmp_alert_enterprise, trap.enterprise, trap.specificTrap))
         }
-        if (trap.agentAddress.isNotBlank()) append(" — ${trap.agentAddress}")
+        if (trap.agentAddress.isNotBlank()) append(resources.getString(R.string.snmp_agent_address, trap.agentAddress))
     }
     return TrapSummary(title, detail)
 }

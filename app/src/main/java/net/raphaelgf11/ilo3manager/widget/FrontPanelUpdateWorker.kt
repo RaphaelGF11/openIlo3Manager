@@ -52,17 +52,21 @@ class FrontPanelUpdateWorker(
 
     private suspend fun update(manager: AppWidgetManager, widgetId: Int, host: SshHost?) {
         val (state, caption) = when {
-            host == null -> PanelState.DARK to "Widget non configuré"
-            !host.ipmiEnabled -> PanelState.DARK to "${host.name} — IPMI désactivé"
+            host == null -> PanelState.DARK to applicationContext.getString(R.string.widget_caption_unconfigured)
+            !host.ipmiEnabled -> PanelState.DARK to applicationContext.getString(R.string.widget_caption_ipmi_disabled, host.name)
             !HostTunnelManager.supportsUdp(host) ->
-                PanelState.DARK to "${host.name} — le tunnel ne porte pas l'UDP"
+                PanelState.DARK to applicationContext.getString(R.string.widget_caption_no_udp, host.name)
             else -> readPanel(host)
         }
 
         val views = RemoteViews(applicationContext.packageName, R.layout.widget_front_panel)
         views.setImageViewBitmap(
             R.id.panel,
-            FrontPanelRenderer.render(state, widthPx = bitmapWidth(manager, widgetId)),
+            FrontPanelRenderer.render(
+                state,
+                widthPx = bitmapWidth(manager, widgetId),
+                resources = applicationContext.resources,
+            ),
         )
         views.setTextViewText(R.id.caption, caption)
         views.setOnClickPendingIntent(R.id.panel, openHostIntent(widgetId, host))
@@ -75,8 +79,12 @@ class FrontPanelUpdateWorker(
             val clock = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date())
             runCatching { PanelReader.read(host) }
                 .map { it to "${host.name} — $clock" }
-                .getOrElse { failure ->
-                    PanelState.DARK to "${host.name} — injoignable ($clock)"
+                .getOrElse {
+                    PanelState.DARK to applicationContext.getString(
+                        R.string.widget_caption_unreachable,
+                        host.name,
+                        clock,
+                    )
                 }
         }
 

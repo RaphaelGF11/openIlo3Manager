@@ -13,9 +13,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import net.raphaelgf11.ilo3manager.R
 
 @Composable
 fun LockScreen(errorMessage: String?, onUnlockClick: () -> Unit) {
@@ -29,12 +31,12 @@ fun LockScreen(errorMessage: String?, onUnlockClick: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Icon(Icons.Filled.Lock, contentDescription = null, modifier = Modifier.size(64.dp))
-            Text("iLO3 Manager verrouillé", style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.lock_screen_title), style = MaterialTheme.typography.titleLarge)
             if (errorMessage != null) {
                 Text(errorMessage, color = MaterialTheme.colorScheme.error)
             }
             Button(onClick = onUnlockClick) {
-                Text("Déverrouiller")
+                Text(stringResource(R.string.unlock))
             }
         }
     }

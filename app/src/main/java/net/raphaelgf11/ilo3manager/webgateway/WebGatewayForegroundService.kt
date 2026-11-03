@@ -26,8 +26,8 @@ class WebGatewayForegroundService : Service() {
         ensureChannel()
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("Passerelle web iLO active")
-            .setContentText("Une interface web iLO est accessible localement.")
+            .setContentTitle(getString(R.string.notification_gateway_active))
+            .setContentText(getString(R.string.notification_gateway_local))
             .setOngoing(true)
             .build()
         startForeground(NOTIFICATION_ID, notification)
@@ -38,7 +38,11 @@ class WebGatewayForegroundService : Service() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = getSystemService(NotificationManager::class.java) ?: return
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Passerelle web iLO", NotificationManager.IMPORTANCE_LOW),
+            NotificationChannel(
+                CHANNEL_ID,
+                getString(R.string.notification_gateway_channel),
+                NotificationManager.IMPORTANCE_LOW,
+            ),
         )
     }
 

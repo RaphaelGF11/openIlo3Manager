@@ -52,6 +52,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -111,17 +112,19 @@ fun HostListScreen(
                         IconButton(onClick = onOpenNetworks) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_network),
-                                contentDescription = "Réseaux",
+                                contentDescription = stringResource(R.string.common_networks),
                             )
                         }
                         IconButton(onClick = onOpenSettings) {
-                            Icon(Icons.Filled.Settings, contentDescription = "Réglages")
+                            Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.common_settings))
                         }
                     }
                     IconButton(onClick = { editMode = !editMode }) {
                         Icon(
                             if (editMode) Icons.Filled.Check else Icons.Filled.Edit,
-                            contentDescription = if (editMode) "Terminer l'édition" else "Modifier la liste",
+                            contentDescription = stringResource(
+                                if (editMode) R.string.host_finish_editing else R.string.host_edit_list,
+                            ),
                         )
                     }
                 },
@@ -134,7 +137,7 @@ fun HostListScreen(
                 // it cannot reach — two buttons here only made the user choose before knowing
                 // which one applied.
                 FloatingActionButton(onClick = onAddHost) {
-                    Icon(Icons.Filled.Add, contentDescription = "Ajouter un hôte")
+                    Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.host_add))
                 }
             }
         },
@@ -149,7 +152,7 @@ fun HostListScreen(
                 // Centring the box does not inset the text: without a margin the sentence wraps
                 // against both screen edges and its first letters are clipped.
                 Text(
-                    "Aucun hôte enregistré. Appuyez sur + pour en ajouter un.",
+                    stringResource(R.string.host_list_empty),
                     modifier = Modifier.padding(horizontal = 32.dp),
                     textAlign = TextAlign.Center,
                 )
@@ -228,9 +231,8 @@ fun HostListScreen(
 
     pendingDeletion?.let { host ->
         ConfirmDeleteDialog(
-            title = "Supprimer « ${host.name} » ?",
-            message = "Son compte, sa clé et ses réglages seront effacés définitivement. " +
-                "Le serveur lui-même n'est pas touché.",
+            title = stringResource(R.string.host_delete_title, host.name),
+            message = stringResource(R.string.host_delete_message),
             onConfirm = {
                 viewModel.deleteHost(host.id)
                 pendingDeletion = null
@@ -322,7 +324,7 @@ private fun HostRow(
             if (editMode) {
                 Icon(
                     Icons.Filled.Menu,
-                    contentDescription = "Réordonner",
+                    contentDescription = stringResource(R.string.host_reorder),
                     modifier = Modifier.pointerInput(host.id) {
                         detectDragGestures(
                             onDragStart = { onDragStart() },
@@ -347,26 +349,26 @@ private fun HostRow(
                     Text(host.name, style = MaterialTheme.typography.titleMedium)
                 }
                 Text(
-                    if (host.webGatewayOnly) "${host.hostname}:${host.httpsPort} — passerelle web"
+                    if (host.webGatewayOnly) "${host.hostname}:${host.httpsPort} — ${stringResource(R.string.host_web_gateway)}"
                     else "${host.username}@${host.hostname}:${host.port}",
                 )
             }
 
             if (editMode) {
                 IconButton(onClick = onEdit) {
-                    Icon(Icons.Filled.Edit, contentDescription = "Éditer")
+                    Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.host_edit))
                 }
                 IconButton(onClick = onDelete) {
-                    Icon(Icons.Filled.Delete, contentDescription = "Supprimer")
+                    Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.common_delete))
                 }
             } else {
                 if (active) {
                     IconButton(onClick = onDisconnect) {
-                        Icon(Icons.Filled.Close, contentDescription = "Interrompre la connexion")
+                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.common_close_connection))
                     }
                 }
                 IconButton(onClick = onClick) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = "Se connecter")
+                    Icon(Icons.Filled.PlayArrow, contentDescription = stringResource(R.string.common_connect))
                 }
             }
         }

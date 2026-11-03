@@ -10,7 +10,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import net.raphaelgf11.ilo3manager.R
 
 /**
  * Offers to turn IPMI on after the first SSH connection to a host that isn't using it.
@@ -31,27 +33,20 @@ fun IpmiSuggestionDialog(
 ) {
     AlertDialog(
         onDismissRequest = { if (!busy) onLater() },
-        title = { Text("Activer IPMI pour cet hôte ?") },
+        title = { Text(stringResource(R.string.ipmi_suggestion_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    "L'onglet Alim passerait entièrement par IPMI : l'état et les actions " +
-                        "d'alimentation répondent en une fraction de seconde au lieu de plusieurs " +
-                        "secondes, et aucune session SSH n'est ouverte pour l'afficher.",
+                    stringResource(R.string.ipmi_suggestion_speed),
                 )
                 Text(
-                    "En contrepartie, cela ouvre le port UDP 623 sur l'iLO. IPMI est un protocole " +
-                        "ancien dont l'authentification livre, par conception, une empreinte du mot " +
-                        "de passe à quiconque la demande — elle peut ensuite être attaquée hors " +
-                        "ligne. À n'activer que sur un réseau d'administration de confiance.",
+                    stringResource(R.string.ipmi_suggestion_risk),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 if (!canEnable) {
                     Text(
-                        "Cet hôte n'a pas de mot de passe enregistré. IPMI s'authentifie par mot " +
-                            "de passe : renseignez-en un dans l'onglet Authentification de la fiche " +
-                            "de l'hôte avant de l'activer.",
+                        stringResource(R.string.ipmi_suggestion_missing_password),
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodyMedium,
                     )
@@ -66,13 +61,13 @@ fun IpmiSuggestionDialog(
         },
         confirmButton = {
             TextButton(onClick = onEnable, enabled = canEnable && !busy) {
-                Text("Activer")
+                Text(stringResource(R.string.ipmi_suggestion_enable))
             }
         },
         dismissButton = {
             Column {
-                TextButton(onClick = onLater, enabled = !busy) { Text("Plus tard") }
-                TextButton(onClick = onNeverAsk, enabled = !busy) { Text("Ne plus proposer") }
+                TextButton(onClick = onLater, enabled = !busy) { Text(stringResource(R.string.ipmi_suggestion_later)) }
+                TextButton(onClick = onNeverAsk, enabled = !busy) { Text(stringResource(R.string.ipmi_suggestion_never)) }
             }
         },
     )

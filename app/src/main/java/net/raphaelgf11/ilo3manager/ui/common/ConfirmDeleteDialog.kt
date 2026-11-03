@@ -5,6 +5,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import net.raphaelgf11.ilo3manager.R
 
 /**
  * Asks before destroying something the user cannot get back.
@@ -28,11 +30,11 @@ fun ConfirmDeleteDialog(
             TextButton(onClick = onConfirm) {
                 // Coloured as the destructive action it is, so the two buttons are not read as
                 // interchangeable at a glance.
-                Text("Supprimer", color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Annuler") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
         },
     )
 }
